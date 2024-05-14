@@ -1,4 +1,5 @@
 ﻿using BepInEx;
+using BoplFixedMath;
 using HarmonyLib;
 using UnityEngine;
 
@@ -60,14 +61,27 @@ namespace AIBopls
         {
             Player player = PlayerHandler.Get().GetPlayer(__instance.GetComponent<IPlayerIdHolder>().GetPlayerId());
             if ((GameLobby.isOnlineGame && player.IsLocalPlayer)
-                || (!GameLobby.isOnlineGame && player.Id == 1)) {
+                || (!GameLobby.isOnlineGame && player.Id == 1))
+            {
                 if (Random.Range(0f, 1f) > .95)
                 {
                     inputOverrides.SetMovementFromVector(Random.insideUnitCircle);
                 }
+                if (Random.Range(0f, 1f) > .95)
+                {
+                    inputOverrides.SetAimVector(Random.insideUnitCircle);
+                }
+                inputOverrides.jumpDown = Random.Range(0f, 1f) > .95;
+
+                if (Random.Range(0f, 1f) > .95)
+                {
+                    var rand = Random.Range(0, 6);
+                    inputOverrides.firstDown = rand == 0;
+                    inputOverrides.secondDown = rand == 1;
+                    inputOverrides.thirdDown = rand == 2;
+                }
             }
         }
-
         public struct InputOverrides
         {
             public bool startDown;
@@ -89,6 +103,11 @@ namespace AIBopls
                 a = vector.x < -.5;
                 s = vector.y < -.5;
                 d = vector.x > .5;
+            }
+
+            public void SetAimVector(Vector2 vector)
+            {
+                joystickAngle = (byte)((int)(long)(Vec2.NormalizedVectorAngle((Vec2)vector) / Fix.PiTimes2 * (Fix)255L) % 255 + 1);
             }
         }
     }
