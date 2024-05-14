@@ -58,7 +58,7 @@ namespace AIBopls
 
         [HarmonyPatch(typeof(CharacterSelectBox), nameof(CharacterSelectBox.OnEnterSelect))]
         [HarmonyPrefix]
-        public static void CharacterSelectBox_OnEnterSelect(CharacterSelectBox __instance)
+        public static void CharacterSelectBox_OnEnterSelect()
         {
             CharacterSelectBox.keyboardMouseIsOccupied = false;
         }
