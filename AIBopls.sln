@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.9.34616.47
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AIBopls", "AIBopls.csproj", "{3FCDEF34-D718-4F8B-A23B-6741A9D9D086}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{3FCDEF34-D718-4F8B-A23B-6741A9D9D086}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3FCDEF34-D718-4F8B-A23B-6741A9D9D086}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3FCDEF34-D718-4F8B-A23B-6741A9D9D086}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3FCDEF34-D718-4F8B-A23B-6741A9D9D086}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {B19AFE0A-AB9E-4446-B64D-4E70E3FEDB4B}
+	EndGlobalSection
+EndGlobal
