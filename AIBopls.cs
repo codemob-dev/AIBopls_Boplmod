@@ -33,9 +33,7 @@ namespace AIBopls
                                                 ref bool s, 
                                                 ref bool d)
         {
-            if (GameLobby.isPlayingAReplay) return;
-            if ((GameLobby.isOnlineGame && __instance.IsLocalPlayer) 
-                || (!GameLobby.isOnlineGame && __instance.Id == 1))
+            if (IsAIPlayer(__instance))
             {
                 startDown = inputOverrides.startDown;
                 selectDown = inputOverrides.selectDown;
@@ -49,10 +47,20 @@ namespace AIBopls
                 s = inputOverrides.s;
                 d = inputOverrides.d;
 
-            } else
-            {
-                instance.Logger.LogInfo(__instance.Id);
             }
+        }
+
+        public static bool IsAIPlayer(Player player)
+        {
+            return ((GameLobby.isOnlineGame && player.IsLocalPlayer)
+                || (!GameLobby.isOnlineGame && player.Id == 2)) && !GameLobby.isPlayingAReplay;
+        }
+
+        [HarmonyPatch(typeof(CharacterSelectBox), nameof(CharacterSelectBox.OnEnterSelect))]
+        [HarmonyPrefix]
+        public static void CharacterSelectBox_OnEnterSelect(CharacterSelectBox __instance)
+        {
+            CharacterSelectBox.keyboardMouseIsOccupied = false;
         }
 
         [HarmonyPatch(typeof(PlayerBody), nameof(PlayerBody.UpdateSim))]
@@ -60,28 +68,33 @@ namespace AIBopls
         public static void PlayerBody_UpdateSim(PlayerBody __instance)
         {
             Player player = PlayerHandler.Get().GetPlayer(__instance.GetComponent<IPlayerIdHolder>().GetPlayerId());
-            if ((GameLobby.isOnlineGame && player.IsLocalPlayer)
-                || (!GameLobby.isOnlineGame && player.Id == 1))
+            if (IsAIPlayer(player))
             {
-                if (Random.Range(0f, 1f) > .95)
-                {
-                    inputOverrides.SetMovementFromVector(Random.insideUnitCircle);
-                }
-                if (Random.Range(0f, 1f) > .95)
-                {
-                    inputOverrides.SetAimVector(Random.insideUnitCircle);
-                }
-                inputOverrides.jumpDown = Random.Range(0f, 1f) > .95;
-
-                if (Random.Range(0f, 1f) > .95)
-                {
-                    var rand = Random.Range(0, 6);
-                    inputOverrides.firstDown = rand == 0;
-                    inputOverrides.secondDown = rand == 1;
-                    inputOverrides.thirdDown = rand == 2;
-                }
+                RandomAI(player);
             }
         }
+
+        public static void RandomAI(Player player)
+        {
+            if (Random.Range(0f, 1f) > .95)
+            {
+                inputOverrides.SetMovementFromVector(Random.insideUnitCircle);
+            }
+            if (Random.Range(0f, 1f) > .975)
+            {
+                inputOverrides.SetAimVector(Random.insideUnitCircle);
+            }
+            inputOverrides.jumpDown = Random.Range(0f, 1f) > .95;
+
+            if (Random.Range(0f, 1f) > .95)
+            {
+                var rand = Random.Range(0, 4);
+                inputOverrides.firstDown = rand == 0;
+                inputOverrides.secondDown = rand == 1;
+                inputOverrides.thirdDown = rand == 2;
+            }
+        }
+
         public struct InputOverrides
         {
             public bool startDown;
