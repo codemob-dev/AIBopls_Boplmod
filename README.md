@@ -2,7 +2,11 @@
 
 # AI Bopl Battle Mod
 
-## Overview
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![GitHub issues](https://img.shields.io/github/issues/codemob-dev/AIBopls_Boplmod.svg)](https://github.com/codemob-dev/AIBopls_Boplmod/issues)
+[![GitHub stars](https://img.shields.io/github/stars/codemob-dev/AIBopls_Boplmod.svg)](https://github.com/codemob-dev/AIBopls_Boplmod/stargazers)
+[![Contributors](https://img.shields.io/github/contributors/codemob-dev/AIBopls_Boplmod.svg)](https://github.com/codemob-dev/AIBopls_Boplmod/graphs/contributors)
+
 The AI Bopl Battle Mod is an mod for Bopl Battle, allowing players to compete against AI opponents in the popular Bopl game.
 
 ## How to Play
