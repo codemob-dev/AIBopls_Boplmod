@@ -1,7 +1,13 @@
 ﻿using BepInEx;
 using BoplFixedMath;
 using HarmonyLib;
+using System.Diagnostics;
+using System.IO;
+using System.IO.Pipes;
+using System.Reflection;
+using System.Threading.Tasks;
 using UnityEngine;
+
 
 namespace AIBopls
 {
@@ -10,12 +16,14 @@ namespace AIBopls
     {
         public Harmony harmony;
         public static InputOverrides inputOverrides = new InputOverrides();
+        public static Communicator communicator;
         public static AIBopls instance;
         private void Awake()
         {
             harmony = new Harmony(Info.Metadata.GUID);
             harmony.PatchAll(typeof(AIBopls));
             instance = this;
+            communicator = new Communicator();
         }
 
         [HarmonyPatch(typeof(Player), nameof(Player.ForceSetInputProfile))]
@@ -46,7 +54,6 @@ namespace AIBopls
                 a = inputOverrides.a;
                 s = inputOverrides.s;
                 d = inputOverrides.d;
-
             }
         }
 
@@ -70,29 +77,14 @@ namespace AIBopls
             Player player = PlayerHandler.Get().GetPlayer(__instance.GetComponent<IPlayerIdHolder>().GetPlayerId());
             if (IsAIPlayer(player))
             {
-                RandomAI(player);
+                ExternalAI(player);
             }
         }
 
-        public static void RandomAI(Player player)
+        public static void ExternalAI(Player player)
         {
-            if (Random.Range(0f, 1f) > .95)
-            {
-                inputOverrides.SetMovementFromVector(Random.insideUnitCircle);
-            }
-            if (Random.Range(0f, 1f) > .975)
-            {
-                inputOverrides.SetAimVector(Random.insideUnitCircle);
-            }
-            inputOverrides.jumpDown = Random.Range(0f, 1f) > .95;
-
-            if (Random.Range(0f, 1f) > .95)
-            {
-                var rand = Random.Range(0, 4);
-                inputOverrides.firstDown = rand == 0;
-                inputOverrides.secondDown = rand == 1;
-                inputOverrides.thirdDown = rand == 2;
-            }
+            communicator.outWriter.Write(false);
+            inputOverrides = InputOverrides.Receive(communicator.inReader);
         }
 
         public struct InputOverrides
@@ -120,7 +112,79 @@ namespace AIBopls
 
             public void SetAimVector(Vector2 vector)
             {
-                joystickAngle = (byte)((int)(long)(Vec2.NormalizedVectorAngle((Vec2)vector) / Fix.PiTimes2 * (Fix)255L) % 255 + 1);
+                joystickAngle = CreateAimVector(vector);
+            }
+            public static byte CreateAimVector(Vector2 vector)
+            {
+                return (byte)((int)(long)(Vec2.NormalizedVectorAngle((Vec2)vector) / Fix.PiTimes2 * (Fix)255L) % 255 + 1);
+            }
+            public static InputOverrides Receive(BinaryReader reader)
+            {
+                return new InputOverrides
+                {
+                    startDown = reader.ReadBoolean(),
+                    selectDown = reader.ReadBoolean(),
+                    jumpDown = reader.ReadBoolean(),
+                    firstDown = reader.ReadBoolean(),
+                    secondDown = reader.ReadBoolean(),
+                    thirdDown = reader.ReadBoolean(),
+                    joystickAngle = CreateAimVector(new Vector2(
+                        reader.ReadSingle(),
+                        reader.ReadSingle())),
+                    w = reader.ReadBoolean(),
+                    a = reader.ReadBoolean(),
+                    s = reader.ReadBoolean(),
+                    d = reader.ReadBoolean()
+                };
+            }
+        }
+
+        public class Communicator
+        {
+            public NamedPipeServerStream pipe;
+            public BinaryWriter outWriter;
+            public BinaryReader inReader;
+
+            public Communicator()
+            {
+                Process AIinterface = new Process();
+                AIinterface.StartInfo.FileName = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "AI.exe");
+
+                var pipeGUID = System.Guid.NewGuid().ToString();
+                pipe = new NamedPipeServerStream(pipeGUID);
+
+                instance.Logger.LogInfo("Starting process...");
+
+                AIinterface.StartInfo.Arguments = pipeGUID;
+                AIinterface.StartInfo.RedirectStandardOutput = true;
+                AIinterface.StartInfo.RedirectStandardError = true;
+                AIinterface.StartInfo.UseShellExecute = false;
+                AIinterface.Start();
+                
+                HandleStdoutStderr(AIinterface.StandardOutput, AIinterface.StandardError);
+
+                outWriter = new BinaryWriter(pipe);
+                inReader = new BinaryReader(pipe);
+
+                instance.Logger.LogInfo("Process started, waiting for connection");
+                pipe.WaitForConnection();
+                instance.Logger.LogInfo("Process connected!");
+            }
+
+            public void HandleStdoutStderr(StreamReader stdout, StreamReader stderr)
+            {
+                var AILogger = BepInEx.Logging.Logger.CreateLogSource("Bopl AI System");
+                Task.Run(() =>
+                {
+                    string line;
+                    while (true)
+                    {
+                        while ((line = stdout.ReadLine()) != null)
+                            AILogger.LogInfo(line);
+                        while ((line = stderr.ReadLine()) != null && line != string.Empty)
+                            AILogger.LogError(line);
+                    }
+                });
             }
         }
     }
