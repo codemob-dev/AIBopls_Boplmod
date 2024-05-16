@@ -1,8 +1,11 @@
-﻿using System;
+﻿using PureHDF.Selections;
+using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.IO.Pipes;
 using System.Numerics;
+using static Tensorflow.Binding;
 
 namespace AI
 {
@@ -11,26 +14,23 @@ namespace AI
         static readonly Random random = new Random();
         static void Main(string[] args)
         {
-            using (var pipe =
-                new NamedPipeClientStream(args[0]))
+            using var pipe = new NamedPipeClientStream(args[0]);
+            using var inReader = new BinaryReader(pipe);
+            using var outWriter = new BinaryWriter(pipe);
+
+            pipe.Connect();
+            while (pipe.IsConnected)
             {
-                using (var inReader = new BinaryReader(pipe))
-                {
-                    using (var outWriter = new BinaryWriter(pipe))
-                    {
-                        pipe.Connect();
-                        while (pipe.IsConnected)
-                        {
-                            RunAI(inReader, outWriter);
-                        }
-                    }
-                }
+                RunAI(inReader, outWriter);
             }
         }
 
         static InputOverrides overrides;
         static void RunAI(BinaryReader inReader, BinaryWriter outWriter)
         {
+            var hello = tf.constant("Hello, TensorFlow!");
+            Console.WriteLine(hello);
+
             var playerLocations = new List<Vector2>(inReader.ReadInt32());
 
             while (playerLocations.Count < playerLocations.Capacity)
@@ -44,36 +44,6 @@ namespace AI
             var AIPlayerLocation = playerLocations[0];
             playerLocations.RemoveAt(0);
 
-            Vector2 closest = AIPlayerLocation;
-            float closestDistance = float.MaxValue;
-            foreach (var location in playerLocations)
-            {
-                if (Vector2.DistanceSquared(location, AIPlayerLocation) <= closestDistance)
-                {
-                    closest = location;
-                }
-            }
-
-            var angleTo = Vector2.Normalize(closest - AIPlayerLocation);
-            var randomizedAngle = Vector2.Normalize(angleTo + new Vector2(2 * (float)random.NextDouble() - 1, 2 * (float)random.NextDouble() - 1));
-
-            if (random.NextDouble() > .95)
-            {
-                overrides.SetMovementFromVector(randomizedAngle);
-            }
-            if (random.NextDouble() > .95)
-            {
-                overrides.joystickAngle = randomizedAngle;
-            }
-            overrides.jumpDown = random.NextDouble() > .95;
-
-            if (random.NextDouble() > .95)
-            {
-                var rand = random.Next(4);
-                overrides.firstDown = rand == 0;
-                overrides.secondDown = rand == 1;
-                overrides.thirdDown = rand == 2;
-            }
             overrides.Transmit(outWriter);
         }
     }

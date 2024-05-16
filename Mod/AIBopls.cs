@@ -164,12 +164,13 @@ namespace AIBopls
                 Process AIinterface = new Process();
                 AIinterface.StartInfo.FileName = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "AI.exe");
 
-                var pipeGUID = System.Guid.NewGuid().ToString();
+                var pipeGUID = Guid.NewGuid().ToString();
                 pipe = new NamedPipeServerStream(pipeGUID);
 
                 instance.Logger.LogInfo("Starting process...");
 
                 AIinterface.StartInfo.Arguments = pipeGUID;
+                AIinterface.StartInfo.EnvironmentVariables["TF_ENABLE_ONEDNN_OPTS"] = "0";
                 AIinterface.StartInfo.RedirectStandardOutput = true;
                 AIinterface.StartInfo.RedirectStandardError = true;
                 AIinterface.StartInfo.UseShellExecute = false;

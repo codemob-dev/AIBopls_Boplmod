@@ -1,4 +1,3 @@
-﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.9.34616.47
@@ -8,22 +7,31 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AIBopls", "Mod\AIBopls.cspr
 		{0934C377-23EB-4D4E-BF49-935F27B15CBC} = {0934C377-23EB-4D4E-BF49-935F27B15CBC}
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AI", "AI\AI.csproj", "{0934C377-23EB-4D4E-BF49-935F27B15CBC}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AI", "AI\AI.csproj", "{0934C377-23EB-4D4E-BF49-935F27B15CBC}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
 		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{3FCDEF34-D718-4F8B-A23B-6741A9D9D086}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{3FCDEF34-D718-4F8B-A23B-6741A9D9D086}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3FCDEF34-D718-4F8B-A23B-6741A9D9D086}.Debug|x64.ActiveCfg = Debug|x64
+		{3FCDEF34-D718-4F8B-A23B-6741A9D9D086}.Debug|x64.Build.0 = Debug|x64
 		{3FCDEF34-D718-4F8B-A23B-6741A9D9D086}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{3FCDEF34-D718-4F8B-A23B-6741A9D9D086}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3FCDEF34-D718-4F8B-A23B-6741A9D9D086}.Release|x64.ActiveCfg = Release|x64
+		{3FCDEF34-D718-4F8B-A23B-6741A9D9D086}.Release|x64.Build.0 = Release|x64
 		{0934C377-23EB-4D4E-BF49-935F27B15CBC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{0934C377-23EB-4D4E-BF49-935F27B15CBC}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{0934C377-23EB-4D4E-BF49-935F27B15CBC}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{0934C377-23EB-4D4E-BF49-935F27B15CBC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0934C377-23EB-4D4E-BF49-935F27B15CBC}.Debug|x64.ActiveCfg = Debug|x64
+		{0934C377-23EB-4D4E-BF49-935F27B15CBC}.Debug|x64.Build.0 = Debug|x64
+		{0934C377-23EB-4D4E-BF49-935F27B15CBC}.Release|Any CPU.ActiveCfg = Release|x64
+		{0934C377-23EB-4D4E-BF49-935F27B15CBC}.Release|Any CPU.Build.0 = Release|x64
+		{0934C377-23EB-4D4E-BF49-935F27B15CBC}.Release|x64.ActiveCfg = Release|x64
+		{0934C377-23EB-4D4E-BF49-935F27B15CBC}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
