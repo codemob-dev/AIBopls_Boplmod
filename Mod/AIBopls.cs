@@ -1,9 +1,11 @@
 ﻿using BepInEx;
 using BoplFixedMath;
 using HarmonyLib;
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
+using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -29,16 +31,16 @@ namespace AIBopls
         [HarmonyPatch(typeof(Player), nameof(Player.ForceSetInputProfile))]
         [HarmonyPrefix]
         public static void Player_ForceSetInputProfile(ref Player __instance,
-                                                ref bool startDown, 
-                                                ref bool selectDown, 
-                                                ref bool jumpDown, 
-                                                ref bool firstDown, 
-                                                ref bool secondDown, 
-                                                ref bool thirdDown, 
-                                                ref byte joystickAngle, 
-                                                ref bool w, 
-                                                ref bool a, 
-                                                ref bool s, 
+                                                ref bool startDown,
+                                                ref bool selectDown,
+                                                ref bool jumpDown,
+                                                ref bool firstDown,
+                                                ref bool secondDown,
+                                                ref bool thirdDown,
+                                                ref byte joystickAngle,
+                                                ref bool w,
+                                                ref bool a,
+                                                ref bool s,
                                                 ref bool d)
         {
             if (IsAIPlayer(__instance))
@@ -74,7 +76,8 @@ namespace AIBopls
         [HarmonyPrefix]
         public static void PlayerBody_UpdateSim(PlayerBody __instance)
         {
-            Player player = PlayerHandler.Get().GetPlayer(__instance.GetComponent<IPlayerIdHolder>().GetPlayerId());
+            var playerHandler = PlayerHandler.Get();
+            Player player = playerHandler.GetPlayer(__instance.GetComponent<IPlayerIdHolder>().GetPlayerId());
             if (IsAIPlayer(player))
             {
                 ExternalAI(player);
@@ -83,7 +86,18 @@ namespace AIBopls
 
         public static void ExternalAI(Player player)
         {
-            communicator.outWriter.Write(false);
+            var playerHandler = PlayerHandler.Get();
+            var playerList = playerHandler.PlayerList().ConvertAll(x => x);
+            playerList.Remove(player);
+            playerList.Insert(0, player);
+
+            communicator.outWriter.Write(playerList.Count);
+            foreach (var p in playerList)
+            {
+                communicator.outWriter.Write((float)p.Position.x);
+                communicator.outWriter.Write((float)p.Position.y);
+            }
+
             inputOverrides = InputOverrides.Receive(communicator.inReader);
         }
 
@@ -160,7 +174,7 @@ namespace AIBopls
                 AIinterface.StartInfo.RedirectStandardError = true;
                 AIinterface.StartInfo.UseShellExecute = false;
                 AIinterface.Start();
-                
+
                 HandleStdoutStderr(AIinterface.StandardOutput, AIinterface.StandardError);
 
                 outWriter = new BinaryWriter(pipe);

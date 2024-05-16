@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipes;
 using System.Numerics;
@@ -20,8 +21,7 @@ namespace AI
                         pipe.Connect();
                         while (pipe.IsConnected)
                         {
-                            inReader.ReadBoolean();
-                            RunAI().Transmit(outWriter);
+                            RunAI(inReader, outWriter);
                         }
                     }
                 }
@@ -29,15 +29,41 @@ namespace AI
         }
 
         static InputOverrides overrides;
-        static InputOverrides RunAI()
+        static void RunAI(BinaryReader inReader, BinaryWriter outWriter)
         {
+            var playerLocations = new List<Vector2>(inReader.ReadInt32());
+
+            while (playerLocations.Count < playerLocations.Capacity)
+            {
+                playerLocations.Add(new Vector2(
+                    inReader.ReadSingle(),
+                    inReader.ReadSingle()
+                ));
+            }
+
+            var AIPlayerLocation = playerLocations[0];
+            playerLocations.RemoveAt(0);
+
+            Vector2 closest = AIPlayerLocation;
+            float closestDistance = float.MaxValue;
+            foreach (var location in playerLocations)
+            {
+                if (Vector2.DistanceSquared(location, AIPlayerLocation) <= closestDistance)
+                {
+                    closest = location;
+                }
+            }
+
+            var angleTo = Vector2.Normalize(closest - AIPlayerLocation);
+            var randomizedAngle = Vector2.Normalize(angleTo + new Vector2(2 * (float)random.NextDouble() - 1, 2 * (float)random.NextDouble() - 1));
+
             if (random.NextDouble() > .95)
             {
-                overrides.SetMovementFromVector(new Vector2((float)random.NextDouble(), (float)random.NextDouble()));
+                overrides.SetMovementFromVector(randomizedAngle);
             }
-            if (random.NextDouble() > .975)
+            if (random.NextDouble() > .95)
             {
-                overrides.joystickAngle = Vector2.Normalize(new Vector2(2 * (float)random.NextDouble() - 1, 2 * (float)random.NextDouble() - 1));
+                overrides.joystickAngle = randomizedAngle;
             }
             overrides.jumpDown = random.NextDouble() > .95;
 
@@ -48,7 +74,7 @@ namespace AI
                 overrides.secondDown = rand == 1;
                 overrides.thirdDown = rand == 2;
             }
-            return overrides;
+            overrides.Transmit(outWriter);
         }
     }
 
