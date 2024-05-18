@@ -33,11 +33,4 @@
     <DebugType>embedded</DebugType>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
-    <PackageReference Include="SciSharp.TensorFlow.Redist" Version="2.16.0" />
-    <PackageReference Include="System.Data.DataSetExtensions" Version="4.6.0-preview3.19128.7" />
-    <PackageReference Include="TensorFlow.Keras" Version="0.15.0" />
-    <PackageReference Include="TensorFlow.NET" Version="0.150.0" />
-  </ItemGroup>
 </Project>

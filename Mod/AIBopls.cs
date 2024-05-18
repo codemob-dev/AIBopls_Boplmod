@@ -2,10 +2,9 @@
 using BoplFixedMath;
 using HarmonyLib;
 using System;
-using System.Diagnostics;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipes;
-using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -62,7 +61,7 @@ namespace AIBopls
         public static bool IsAIPlayer(Player player)
         {
             return ((GameLobby.isOnlineGame && player.IsLocalPlayer)
-                || (!GameLobby.isOnlineGame && player.Id == 2)) && !GameLobby.isPlayingAReplay;
+                || (!GameLobby.isOnlineGame && player.Id == 1)) && !GameLobby.isPlayingAReplay;
         }
 
         [HarmonyPatch(typeof(CharacterSelectBox), nameof(CharacterSelectBox.OnEnterSelect))]
@@ -84,10 +83,26 @@ namespace AIBopls
             }
         }
 
+        public static double GetDistance(Player player, double angle)
+        {
+            var direction = new Vec2(Fix.Sin((Fix)angle), Fix.Cos((Fix)angle));
+
+            var result = DetPhysics.Get().RaycastToClosest(
+                player.Position + direction * player.Scale * (Fix)2,
+                direction,
+                DetPhysics.Get().maxBeamDistance,
+                DetPhysics.Get().beamHitMask);
+
+
+            return result ? (double)result.nearDist : -1;
+        }
+
         public static void ExternalAI(Player player)
         {
+            const int rays = 16;
+
             var playerHandler = PlayerHandler.Get();
-            var playerList = playerHandler.PlayerList().ConvertAll(x => x);
+            var playerList = playerHandler.PlayerList();
             playerList.Remove(player);
             playerList.Insert(0, player);
 
@@ -96,6 +111,19 @@ namespace AIBopls
             {
                 communicator.outWriter.Write((float)p.Position.x);
                 communicator.outWriter.Write((float)p.Position.y);
+            }
+
+            List<double> vision = new List<double>();
+
+            for (int i = 0; i < rays; i++)
+            {
+                vision.Add(GetDistance(player, 2*Math.PI*(i/rays)));
+            }
+
+            communicator.outWriter.Write(vision.Count);
+            foreach (var dbl in vision)
+            {
+                communicator.outWriter.Write(dbl);
             }
 
             inputOverrides = InputOverrides.Receive(communicator.inReader);
@@ -161,7 +189,7 @@ namespace AIBopls
 
             public Communicator()
             {
-                Process AIinterface = new Process();
+                var AIinterface = new System.Diagnostics.Process();
                 AIinterface.StartInfo.FileName = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "AI.exe");
 
                 var pipeGUID = Guid.NewGuid().ToString();
