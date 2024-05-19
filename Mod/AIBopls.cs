@@ -25,7 +25,7 @@ namespace AIBopls
             harmony.PatchAll(typeof(AIBopls));
             instance = this;
             communicator = new Communicator();
-        }
+        } // MUST USE GREANDE+DASH+GUST
 
         [HarmonyPatch(typeof(Player), nameof(Player.ForceSetInputProfile))]
         [HarmonyPrefix]
@@ -64,6 +64,17 @@ namespace AIBopls
                 || (!GameLobby.isOnlineGame && player.Id == 1)) && !GameLobby.isPlayingAReplay;
         }
 
+        [HarmonyPatch(typeof(Player), nameof(Player.Kill))]
+        [HarmonyPrefix]
+        public static void Player_Kill(Player __instance, int idOfKiller, 
+                                       long timestamp, CauseOfDeath causeOfDeath)
+        {
+            if (!IsAIPlayer(__instance)) return;
+
+            Player killer = PlayerHandler.Get().GetPlayer(idOfKiller);
+            HandleGameEnd(__instance, idOfKiller == __instance.Id);
+        }
+
         [HarmonyPatch(typeof(CharacterSelectBox), nameof(CharacterSelectBox.OnEnterSelect))]
         [HarmonyPrefix]
         public static void CharacterSelectBox_OnEnterSelect()
@@ -97,8 +108,40 @@ namespace AIBopls
             return result ? (double)result.nearDist : -1;
         }
 
+        static DateTime? matchStartTime = null;
+        public static void HandleGameEnd(Player player, bool killedSelf)
+        {
+            communicator.outWriter.Write(false);
+            var elapsedTime = DateTime.Now - matchStartTime.Value;
+
+            double score = 75 * (player.Kills - player.KillsAtStartOfRound);
+
+            if (player.WonThisRound)
+            {
+                score += 240 - elapsedTime.TotalSeconds;
+            } else
+            {
+                score += .3 * elapsedTime.TotalSeconds;
+            }
+            if (killedSelf) score -= 75;
+
+            communicator.outWriter.Write(score);
+
+            matchStartTime = null;
+        }
+
         public static void ExternalAI(Player player)
         {
+            if (!matchStartTime.HasValue) matchStartTime = DateTime.Now;
+
+            if (player.WonThisRound)
+            {
+                HandleGameEnd(player, false);
+                return;
+            }
+            if (!player.stillAliveThisRound) return;
+
+
             const int rays = 16;
 
             var playerHandler = PlayerHandler.Get();
@@ -106,6 +149,7 @@ namespace AIBopls
             playerList.Remove(player);
             playerList.Insert(0, player);
 
+            communicator.outWriter.Write(true);
             communicator.outWriter.Write(playerList.Count);
             foreach (var p in playerList)
             {
@@ -117,7 +161,7 @@ namespace AIBopls
 
             for (int i = 0; i < rays; i++)
             {
-                vision.Add(GetDistance(player, 2*Math.PI*(i/rays)));
+                vision.Add(GetDistance(player, 2 * Math.PI * (i / rays)));
             }
 
             communicator.outWriter.Write(vision.Count);

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.IO.Pipes;
 using System.Linq;
@@ -14,17 +15,7 @@ namespace AI
         {
             if (args.Length > 0)
             {
-                using var pipe = new NamedPipeClientStream(args[0]);
-                using var inReader = new BinaryReader(pipe);
-                using var outWriter = new BinaryWriter(pipe);
-
-                SetupAI();
-
-                pipe.Connect();
-                while (pipe.IsConnected)
-                {
-                    RunAI(inReader, outWriter);
-                }
+                ModConnection(args[0]);
             }
             else
             {
@@ -35,28 +26,17 @@ namespace AI
 
                 var net = new Network();
                 net.AddLayer(new InputLayer(typeof(IdentityNode), 2));
-                net.AddLayer(new HiddenLayer(typeof(TanhNode), 12, net.PreviousLayerSize));
-                net.AddLayer(new HiddenLayer(typeof(TanhNode), 12, net.PreviousLayerSize));
-                net.AddLayer(new HiddenLayer(typeof(TanhNode), 12, net.PreviousLayerSize));
+                net.AddLayer(new HiddenLayer(typeof(TanhNode), 2, net.PreviousLayerSize));
                 net.AddLayer(new OutputLayer([typeof(SigmoidNode)], net.PreviousLayerSize));
 
-                List<double[]> inputs = [];
-                List<double[]> outputs = [];
-
-                for (double m = 1; m <= 2; m += 0.5)
-                {
-                    for (double n = 1; n <= 2; n += 0.5)
-                    {
-                        inputs.Add([m, n]);
-                        outputs.Add([m * n]);
-                    }
-                }
+                List<double[]> inputs = [[0, 0], [0, 1], [1, 0], [1, 1]];
+                List<double[]> outputs = [[0], [1], [1], [0]];
 
                 var i = 0;
 
                 var previousNet = net;
                 var accuracy = RunCheck(net, inputs, outputs, logOutput: true);
-                while (accuracy > 0.00001)
+                while (accuracy > 0)
                 {
                     var newNets = Enumerable.Range(0, generationSize)
                         .Select(x => net.Randomize((accuracy - 1 + randomizeBase) * randomizeMultiplier));
@@ -81,7 +61,37 @@ namespace AI
 
                 timer.Stop();
                 Console.WriteLine($"Completed in {timer.ElapsedMilliseconds}ms");
+                net.Save("test");
+                Network.Load("test");
             }
+        }
+
+        const string NETWORK_FILE = "output";
+        static async void ModConnection(string pipeName)
+        {
+            using var pipe = new NamedPipeClientStream(pipeName);
+            using var inReader = new BinaryReader(pipe);
+            using var outWriter = new BinaryWriter(pipe);
+            pipe.Connect();
+            try
+            {
+                SetupAI();
+
+                while (pipe.IsConnected)
+                {
+                    RunAI(inReader, outWriter);
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+                throw;
+            }
+            finally
+            {
+                neuralNetwork.Save(NETWORK_FILE);
+            }
+            
         }
 
         static double RunCheck(Network net, List<double[]> inputs, List<double[]> outputs, bool logOutput = false)
@@ -110,73 +120,97 @@ namespace AI
 
         static void SetupAI()
         {
-            neuralNetwork = new Network();
-            neuralNetwork.AddLayer(new InputLayer(typeof(IdentityNode),
-                rays // Vision
-                + 8 // Player Locations
-                + 1 // Number of players
-                ));
-            neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 32,
-                neuralNetwork.PreviousLayerSize));
-            neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 32,
-                neuralNetwork.PreviousLayerSize));
-            neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 32,
-                neuralNetwork.PreviousLayerSize));
-            neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 32,
-                neuralNetwork.PreviousLayerSize));
-            neuralNetwork.AddLayer(new OutputLayer(
-                [
-                typeof(SigmoidNode), // jump
+            try
+            {
+                neuralNetwork = Network.Load(NETWORK_FILE);
+            }
+            catch (FileNotFoundException)
+            {
+                List<Type> outputs = [
+                                typeof(SigmoidNode), // jump
                 typeof(SigmoidNode), typeof(SigmoidNode), typeof(SigmoidNode), // abilities
                 typeof(TanhNode), typeof(TanhNode), // aiming
                 typeof(TanhNode), typeof(TanhNode) // movement
-                ],
-                neuralNetwork.PreviousLayerSize));
+                                ];
+                neuralNetwork = new Network();
+                neuralNetwork.AddLayer(new InputLayer(typeof(IdentityNode),
+                    rays // Vision
+                    + 8 // Player Locations
+                    + 1 // Number of players
+                    + outputs.Count // Previous inputs
+                    ));
+                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 32,
+                    neuralNetwork.PreviousLayerSize));
+                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 32,
+                    neuralNetwork.PreviousLayerSize));
+                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 32,
+                    neuralNetwork.PreviousLayerSize));
+                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 32,
+                    neuralNetwork.PreviousLayerSize));
+                neuralNetwork.AddLayer(new OutputLayer(
+                    outputs,
+                    neuralNetwork.PreviousLayerSize));
+            }
         }
 
         static InputOverrides overrides;
         static Network neuralNetwork;
         static void RunAI(BinaryReader inReader, BinaryWriter outWriter)
         {
-
-            var playerLocations = new List<Vector2>(inReader.ReadInt32());
-            while (playerLocations.Count < playerLocations.Capacity)
+            if (inReader.ReadBoolean())
             {
-                playerLocations.Add(new Vector2(
-                    inReader.ReadSingle(),
-                    inReader.ReadSingle()
-                ));
+                var playerLocations = new List<Vector2>(inReader.ReadInt32());
+                while (playerLocations.Count < playerLocations.Capacity)
+                {
+                    playerLocations.Add(new Vector2(
+                        inReader.ReadSingle(),
+                        inReader.ReadSingle()
+                    ));
+                }
+
+                var numPlayers = playerLocations.Count;
+                playerLocations.AddRange(Enumerable.Repeat(Vector2.Zero, 4 - numPlayers));
+
+                var vision = new List<double>(inReader.ReadInt32());
+                while (vision.Count < vision.Capacity)
+                {
+                    vision.Add(inReader.ReadDouble());
+                }
+
+                var AIPlayerLocation = playerLocations[0];
+                playerLocations.RemoveAt(0);
+
+                var previousMoveVector = overrides.GetVectorFromMovement();
+
+                var outputs = neuralNetwork.Evaluate(
+                    [..vision,
+                    AIPlayerLocation.X, AIPlayerLocation.Y,
+                    ..(playerLocations.SelectMany<Vector2, double>(vec=>[vec.X,vec.Y])),
+                    numPlayers,
+                    overrides.jumpDown?1:0,
+                    overrides.firstDown?1:0,
+                    overrides.secondDown?1:0,
+                    overrides.thirdDown?1:0,
+                    overrides.joystickAngle.X, overrides.joystickAngle.Y,
+                    previousMoveVector.X, previousMoveVector.Y
+                    ]);
+
+                overrides.jumpDown = outputs[0] > .5;
+                overrides.firstDown = outputs[1] > .5;
+                overrides.secondDown = outputs[2] > .5;
+                overrides.thirdDown = outputs[3] > .5;
+
+                overrides.joystickAngle = new Vector2((float)outputs[4], (float)outputs[5]);
+                overrides.SetMovementFromVector(new Vector2((float)outputs[6], (float)outputs[7]));
+
+
+                overrides.Transmit(outWriter);
             }
-
-            var numPlayers = playerLocations.Count;
-            playerLocations.AddRange(Enumerable.Repeat(Vector2.Zero, 4 - numPlayers));
-
-            var vision = new List<double>(inReader.ReadInt32());
-            while (vision.Count < vision.Capacity)
+            else
             {
-                vision.Add(inReader.ReadDouble());
+                var score = inReader.ReadDouble();
+                Console.WriteLine($"AI SCORE : {score.ToString("F", CultureInfo.InvariantCulture)}");
             }
-
-            var AIPlayerLocation = playerLocations[0];
-            playerLocations.RemoveAt(0);
-
-            var outputs = neuralNetwork.Evaluate(
-                [..vision,
-                AIPlayerLocation.X, AIPlayerLocation.Y,
-                ..(playerLocations.SelectMany<Vector2, double>(vec=>[vec.X,vec.Y])),
-                numPlayers
-                ]);
-
-            overrides.jumpDown = outputs[0] > .5;
-            overrides.firstDown = outputs[1] > .5;
-            overrides.secondDown = outputs[2] > .5;
-            overrides.thirdDown = outputs[3] > .5;
-
-            overrides.joystickAngle = new Vector2((float)outputs[4], (float)outputs[5]);
-            overrides.SetMovementFromVector(new Vector2((float)outputs[6], (float)outputs[7]));
-
-
-            overrides.Transmit(outWriter);
         }
     }
 
@@ -201,6 +235,16 @@ namespace AI
             a = vector.X < -.5;
             s = vector.Y < -.5;
             d = vector.X > .5;
+        }
+
+        public readonly Vector2 GetVectorFromMovement()
+        {
+            var vector = Vector2.Zero;
+            if (w) vector.Y = 1;
+            if (a) vector.X = -1;
+            if (s) vector.Y = -1;
+            if (d) vector.X = 1;
+            return vector;
         }
 
         public readonly void Transmit(BinaryWriter writer)

@@ -1,6 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Data;
+using System.IO;
 using System.Linq;
+using System.Reflection;
 
 
 namespace AI
@@ -43,6 +46,45 @@ namespace AI
             }
             return input;
         }
+        public void Save(Stream stream)
+        {
+            var binaryWriter = new BinaryWriter(stream);
+            binaryWriter.Write(layers.Count);
+            foreach (var layer in layers)
+            {
+                binaryWriter.Write(layer.GetType().AssemblyQualifiedName);
+                layer.Save(binaryWriter);
+            }
+        }
+        public void Save(string filename)
+        {
+            filename = Path.ChangeExtension(filename, ".bplnet");
+            using var file = File.Create(filename);
+            Save(file);
+        }
+        public static Network Load(string filename)
+        {
+            filename = Path.ChangeExtension(filename, ".bplnet");
+            using var file = File.OpenRead(filename);
+            return Load(file);
+        }
+        public static Network Load(Stream stream)
+        {
+            var binaryReader = new BinaryReader(stream);
+            var numLayers = binaryReader.ReadInt32();
+
+            var net = new Network();
+            net.layers.Capacity = numLayers;
+
+            for (int i = 0; i < numLayers; i++)
+            {
+                var layerType = Type.GetType(binaryReader.ReadString());
+                var layer = layerType.GetConstructor([]).Invoke([]) as Layer;
+                layer.Load(binaryReader);
+                net.AddLayer(layer);
+            }
+            return net;
+        }
     }
     internal abstract class Layer()
     {
@@ -55,6 +97,30 @@ namespace AI
                 .Invoke([]) as Layer;
             layer.nodes = nodes.Select(x => x.Randomize(factor)).ToList();
             return layer;
+        }
+        public void Load(BinaryReader binaryReader)
+        {
+            var numNodes = binaryReader.ReadInt32();
+            nodes = new List<Node>(numNodes);
+            for (int i = 0; i < numNodes; i++)
+            {
+                var nodeType = Type.GetType(binaryReader.ReadString());
+                var node = nodeType
+                    .GetConstructor([typeof(List<double>), typeof(double)])
+                    .Invoke([new List<double>(), 0.0]) as Node;
+                node.Load(binaryReader);
+                nodes.Add(node);
+            }
+
+        }
+        public void Save(BinaryWriter binaryWriter)
+        {
+            binaryWriter.Write(nodes.Count);
+            foreach (var node in nodes)
+            {
+                binaryWriter.Write(node.GetType().AssemblyQualifiedName);
+                node.Save(binaryWriter);
+            }
         }
     }
     internal class InputLayer() : Layer()
@@ -174,6 +240,27 @@ namespace AI
             return GetType()
                 .GetConstructor([typeof(List<double>), typeof(double)])
                 .Invoke([weights, bias]) as Node;
+        }
+
+        internal void Save(BinaryWriter binaryWriter)
+        {
+            binaryWriter.Write(weights.Count);
+            foreach (var weight in weights)
+            {
+                binaryWriter.Write(weight);
+            }
+            binaryWriter.Write(bias);
+        }
+
+        internal void Load(BinaryReader binaryReader)
+        {
+            var numWeights = binaryReader.ReadInt32();
+            weights = new List<double>(numWeights);
+            for (int i = 0; i < numWeights; i++)
+            {
+                weights.Add(binaryReader.ReadDouble());
+            }
+            bias = binaryReader.ReadDouble();
         }
     }
     internal class SigmoidNode : Node
