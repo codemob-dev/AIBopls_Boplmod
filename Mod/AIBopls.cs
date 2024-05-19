@@ -111,6 +111,8 @@ namespace AIBopls
         static DateTime? matchStartTime = null;
         public static void HandleGameEnd(Player player, bool killedSelf)
         {
+            if (sentGameEnd) return;
+            sentGameEnd = true;
             communicator.outWriter.Write(false);
             var elapsedTime = DateTime.Now - matchStartTime.Value;
 
@@ -130,6 +132,7 @@ namespace AIBopls
             matchStartTime = null;
         }
 
+        public static bool sentGameEnd = false;
         public static void ExternalAI(Player player)
         {
             if (!matchStartTime.HasValue) matchStartTime = DateTime.Now;
@@ -138,8 +141,11 @@ namespace AIBopls
             {
                 HandleGameEnd(player, false);
                 return;
+            } else if (!player.stillAliveThisRound) return;
+            else
+            {
+                sentGameEnd = false;
             }
-            if (!player.stillAliveThisRound) return;
 
 
             const int rays = 16;

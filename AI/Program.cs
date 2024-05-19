@@ -67,7 +67,7 @@ namespace AI
         }
 
         const string NETWORK_FILE = "output";
-        static async void ModConnection(string pipeName)
+        static void ModConnection(string pipeName)
         {
             using var pipe = new NamedPipeClientStream(pipeName);
             using var inReader = new BinaryReader(pipe);
@@ -79,7 +79,8 @@ namespace AI
 
                 while (pipe.IsConnected)
                 {
-                    RunAI(inReader, outWriter);
+                    var batch = neuralNetwork.GenRandomBatch(3, 2);
+                    neuralNetwork = RunBatch(batch, inReader, outWriter);
                 }
             }
             catch (Exception e)
@@ -91,7 +92,6 @@ namespace AI
             {
                 neuralNetwork.Save(NETWORK_FILE);
             }
-            
         }
 
         static double RunCheck(Network net, List<double[]> inputs, List<double[]> outputs, bool logOutput = false)
@@ -147,6 +147,10 @@ namespace AI
                     neuralNetwork.PreviousLayerSize));
                 neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 32,
                     neuralNetwork.PreviousLayerSize));
+                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 32,
+                    neuralNetwork.PreviousLayerSize));
+                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 32,
+                    neuralNetwork.PreviousLayerSize));
                 neuralNetwork.AddLayer(new OutputLayer(
                     outputs,
                     neuralNetwork.PreviousLayerSize));
@@ -155,7 +159,34 @@ namespace AI
 
         static InputOverrides overrides;
         static Network neuralNetwork;
-        static void RunAI(BinaryReader inReader, BinaryWriter outWriter)
+
+        static Network RunBatch(IEnumerable<Network> networks, BinaryReader inReader, BinaryWriter outWriter)
+        {
+            double bestScore = double.NaN;
+            Network bestNetwork = null;
+
+            foreach (var network in networks)
+            {
+                var networkScore = RunAIMatch(network, inReader, outWriter);
+                if (!(networkScore < bestScore))
+                {
+                    bestNetwork = network;
+                    bestScore = networkScore;
+                }
+            }
+            return bestNetwork;
+        }
+
+        static double RunAIMatch(Network net, BinaryReader inReader, BinaryWriter outWriter)
+        {
+            double? score = null;
+            while (!score.HasValue)
+            {
+                score = RunAI(net, inReader, outWriter);
+            }
+            return score.Value;
+        }
+        static double? RunAI(Network net, BinaryReader inReader, BinaryWriter outWriter)
         {
             if (inReader.ReadBoolean())
             {
@@ -182,7 +213,7 @@ namespace AI
 
                 var previousMoveVector = overrides.GetVectorFromMovement();
 
-                var outputs = neuralNetwork.Evaluate(
+                var outputs = net.Evaluate(
                     [..vision,
                     AIPlayerLocation.X, AIPlayerLocation.Y,
                     ..(playerLocations.SelectMany<Vector2, double>(vec=>[vec.X,vec.Y])),
@@ -205,11 +236,13 @@ namespace AI
 
 
                 overrides.Transmit(outWriter);
+                return null;
             }
             else
             {
                 var score = inReader.ReadDouble();
                 Console.WriteLine($"AI SCORE : {score.ToString("F", CultureInfo.InvariantCulture)}");
+                return score;
             }
         }
     }

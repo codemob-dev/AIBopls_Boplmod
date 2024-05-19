@@ -38,6 +38,19 @@ namespace AI
             };
         }
 
+        public List<Network> GenRandomBatch(int batchSize, double randomFactor)
+        {
+            List<Network> batch = new(batchSize + 1)
+            {
+                this
+            };
+            for (int i = 0; i < batchSize; i++)
+            {
+                batch.Add(Randomize(randomFactor));
+            }
+            return batch;
+        }
+
         public List<double> Evaluate(List<double> input)
         {
             foreach (Layer layer in layers)
