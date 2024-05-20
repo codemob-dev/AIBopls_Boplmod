@@ -55,11 +55,11 @@ namespace AI
             }
         }
 
-        static double RunCheck(Network net, List<double[]> inputs, List<double[]> outputs, int iteration)
+        static double RunCheck(Network net, List<double[]> inputs, List<double[]> outputs, int iteration, int fractionOfData)
         {
             var random = new Random(iteration);
 
-            var factor = 448d / inputs.Count;
+            var factor = (double)fractionOfData / inputs.Count;
 
             ConcurrentBag<double> errors = [];
             var countdown = new CountdownEvent(inputs.Count);
@@ -185,6 +185,10 @@ namespace AI
                 otherInfo.Add(moveVector.X);
                 otherInfo.Add(moveVector.Y);
 
+                double[] output = [
+                    ..otherInfo
+                ];
+
                 var timeSince1 = (timeSinceMatchStart - ability1Change).TotalSeconds;
                 var timeSince2 = (timeSinceMatchStart - ability2Change).TotalSeconds;
                 var timeSince3 = (timeSinceMatchStart - ability3Change).TotalSeconds;
@@ -204,11 +208,8 @@ namespace AI
                     ..previousOutputs
                 ];
 
-                double[] output = [
-                    ..otherInfo
-                ];
+                previousOutputs = [..output];
 
-                previousOutputs = output;
                 inputs.Add(input);
                 outputs.Add(output);
                 Console.Write($"Loaded {((double)file.Position / file.Length * 100).ToString("F", CultureInfo.InvariantCulture)}% of data\r");
@@ -218,9 +219,10 @@ namespace AI
 
 
             var timer = Stopwatch.StartNew();
-            var generationSize = 72;
+            var generationSize = 56;
             var randomize = .01;
             var i = 0;
+            var fractionOfData = 192;
 
             var running = true;
 
@@ -249,7 +251,7 @@ namespace AI
                 bestAccuracy = double.NaN;
                 foreach (var net in nets)
                 {
-                    var newAccuracy = RunCheck(net, inputs, outputs, i);
+                    var newAccuracy = RunCheck(net, inputs, outputs, i, fractionOfData);
                     if (!(newAccuracy >= bestAccuracy))
                     {
                         bestAccuracy = newAccuracy;
