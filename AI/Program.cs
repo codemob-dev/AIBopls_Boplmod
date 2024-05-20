@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -6,6 +7,7 @@ using System.IO;
 using System.IO.Pipes;
 using System.Linq;
 using System.Numerics;
+using System.Threading;
 
 namespace AI
 {
@@ -19,54 +21,18 @@ namespace AI
             }
             else
             {
-                var timer = Stopwatch.StartNew();
-                var generationSize = 80;
-                var randomizeBase = 8;
-                var randomizeMultiplier = 16;
-
-                var net = new Network();
-                net.AddLayer(new InputLayer(typeof(IdentityNode), 2));
-                net.AddLayer(new HiddenLayer(typeof(TanhNode), 2, net.PreviousLayerSize));
-                net.AddLayer(new OutputLayer([typeof(SigmoidNode)], net.PreviousLayerSize));
-
-                List<double[]> inputs = [[0, 0], [0, 1], [1, 0], [1, 1]];
-                List<double[]> outputs = [[0], [1], [1], [0]];
-
-                var i = 0;
-
-                var previousNet = net;
-                var accuracy = RunCheck(net, inputs, outputs, logOutput: true);
-                while (accuracy > 0)
+                try
                 {
-                    var newNets = Enumerable.Range(0, generationSize)
-                        .Select(x => net.Randomize((accuracy - 1 + randomizeBase) * randomizeMultiplier));
-
-                    foreach (var newNet in newNets)
-                    {
-                        var newAccuracy = RunCheck(newNet, inputs, outputs);
-                        if (newAccuracy < accuracy)
-                        {
-                            accuracy = newAccuracy;
-                            net = newNet;
-                        }
-                    }
-                    if (net != previousNet)
-                    {
-                        Console.WriteLine($"\n\nIteration: {i} | Generation Size: {generationSize}");
-                        RunCheck(net, inputs, outputs, logOutput: true);
-                    }
-                    previousNet = net;
-                    i++;
+                    SetupAI(true);
                 }
-
-                timer.Stop();
-                Console.WriteLine($"Completed in {timer.ElapsedMilliseconds}ms");
-                net.Save("test");
-                Network.Load("test");
+                finally
+                {
+                    neuralNetwork.Save(NETWORK_FILE);
+                }
             }
         }
 
-        const string NETWORK_FILE = "output";
+        const string NETWORK_FILE = "ai";
         static void ModConnection(string pipeName)
         {
             using var pipe = new NamedPipeClientStream(pipeName);
@@ -75,18 +41,13 @@ namespace AI
             pipe.Connect();
             try
             {
-                SetupAI();
+                SetupAI(false);
 
                 while (pipe.IsConnected)
                 {
-                    var batch = neuralNetwork.GenRandomBatch(3, 2);
+                    var batch = neuralNetwork.GenRandomBatch(5, 16);
                     neuralNetwork = RunBatch(batch, inReader, outWriter);
                 }
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e);
-                throw;
             }
             finally
             {
@@ -94,67 +55,177 @@ namespace AI
             }
         }
 
-        static double RunCheck(Network net, List<double[]> inputs, List<double[]> outputs, bool logOutput = false)
+        static double RunCheck(Network net, List<double[]> inputs, List<double[]> outputs, int iteration)
         {
-            List<double> errors = [];
+            var random = new Random(iteration);
+
+            ConcurrentBag<double> errors = [];
+            var countdown = new CountdownEvent(inputs.Count);
             for (int i = 0; i < inputs.Count; i++)
             {
-                double[] input = inputs[i];
-                double[] output = outputs[i];
-                double[] evaluatedOutput = [.. net.Evaluate([.. input]).Select(x => Math.Round(x, 6))];
-                if (logOutput) Console.WriteLine(
-                    $"[{string.Join(", ", input)}] => " +
-                    $"[{string.Join(", ", evaluatedOutput)}] " +
-                    $"(expected [{string.Join(", ", output)}])");
-                for (int j = 0; j < output.Length; j++)
+                if (random.NextDouble() > .025 || i == 0)
                 {
-                    errors.Add(Math.Abs(output[j] - evaluatedOutput[j]));
+                    countdown.Signal();
+                    continue;
                 }
+                ThreadPool.QueueUserWorkItem(i =>
+                {
+                    double[] input = inputs[(int)i];
+                    double[] output = outputs[(int)i];
+                    double[] evaluatedOutput = [.. net.Evaluate([.. input])];
+                    var localErrors = new double[output.Length];
+                    for (int j = 0; j < output.Length; j++)
+                    {
+                        localErrors[j] = Math.Abs(output[j] - evaluatedOutput[j]);
+                    }
+                    errors.Add(localErrors.Average());
+                    countdown.Signal();
+                }, i);
             }
+            countdown.Wait();
             double accuracy = errors.Average();
-            if (logOutput) Console.WriteLine($"Accuracy: {accuracy}");
             return accuracy;
         }
 
         const int rays = 16;
 
-        static void SetupAI()
+        static void SetupAI(bool train)
         {
+            List<Type> outputTypes = [
+                typeof(SigmoidNode), // jump
+                typeof(SigmoidNode), typeof(SigmoidNode), typeof(SigmoidNode), // abilities
+                typeof(TanhNode), typeof(TanhNode), // aiming
+                typeof(TanhNode), typeof(TanhNode) // movement
+            ];
             try
             {
                 neuralNetwork = Network.Load(NETWORK_FILE);
             }
             catch (FileNotFoundException)
             {
-                List<Type> outputs = [
-                                typeof(SigmoidNode), // jump
-                typeof(SigmoidNode), typeof(SigmoidNode), typeof(SigmoidNode), // abilities
-                typeof(TanhNode), typeof(TanhNode), // aiming
-                typeof(TanhNode), typeof(TanhNode) // movement
-                                ];
                 neuralNetwork = new Network();
                 neuralNetwork.AddLayer(new InputLayer(typeof(IdentityNode),
                     rays // Vision
                     + 8 // Player Locations
                     + 1 // Number of players
-                    + outputs.Count // Previous inputs
+                    + outputTypes.Count // Previous inputs
                     ));
-                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 32,
+                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 48,
                     neuralNetwork.PreviousLayerSize));
-                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 32,
+                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 48,
                     neuralNetwork.PreviousLayerSize));
-                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 32,
+                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 48,
                     neuralNetwork.PreviousLayerSize));
-                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 32,
+                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 48,
                     neuralNetwork.PreviousLayerSize));
-                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 32,
+                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 48,
                     neuralNetwork.PreviousLayerSize));
-                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 32,
+                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 48,
                     neuralNetwork.PreviousLayerSize));
                 neuralNetwork.AddLayer(new OutputLayer(
-                    outputs,
+                    outputTypes,
                     neuralNetwork.PreviousLayerSize));
             }
+            if (!train) return;
+            using var file = File.OpenRead("recordedInputs.bin");
+            var fileReader = new BinaryReader(file);
+
+            List<double[]> inputs = [];
+            List<double[]> outputs = [];
+
+            double[] previousOutputs = new double[outputTypes.Count];
+            while (file.Length - file.Position > 1)
+            {
+                List<Vector2> playerLocations = [];
+                var numPlayers = fileReader.ReadInt32();
+                for (var j = 0; j < numPlayers; j++)
+                {
+                    playerLocations.Add(new Vector2(
+                        fileReader.ReadSingle(),
+                        fileReader.ReadSingle()
+                        ));
+                }
+                playerLocations.AddRange(Enumerable.Repeat(Vector2.Zero, 4 - numPlayers));
+
+                List<double> vision = [];
+                var numVision = fileReader.ReadInt32();
+                for (var j = 0; j < numVision; j++)
+                {
+                    vision.Add(fileReader.ReadDouble());
+                }
+
+                List<double> otherInfo = [
+                    fileReader.ReadBoolean()?1:0,
+                    fileReader.ReadBoolean()?1:0,
+                    fileReader.ReadBoolean()?1:0,
+                    fileReader.ReadBoolean()?1:0,
+                    fileReader.ReadSingle(),
+                    fileReader.ReadSingle()
+                ];
+
+                var moveVector = new InputOverrides
+                {
+                    w = fileReader.ReadBoolean(),
+                    a = fileReader.ReadBoolean(),
+                    s = fileReader.ReadBoolean(),
+                    d = fileReader.ReadBoolean()
+                }.GetVectorFromMovement();
+                otherInfo.Add(moveVector.X);
+                otherInfo.Add(moveVector.Y);
+                double[] input = [
+                    ..vision,
+                    ..(playerLocations.SelectMany<Vector2, double>(vec=>[vec.X,vec.Y])),
+                    numPlayers,
+                    ..previousOutputs
+                ];
+                double[] output = [
+                    ..otherInfo
+                ];
+                previousOutputs = output;
+                inputs.Add(input);
+                outputs.Add(output);
+                Console.Write($"Loaded {((double)file.Position / file.Length * 100).ToString("F", CultureInfo.InvariantCulture)}% of data\r");
+            }
+
+            Console.WriteLine($"Loaded {inputs.Count} frames of data");
+
+
+            var timer = Stopwatch.StartNew();
+            var generationSize = 24;
+            var randomize = 16;
+            var i = 0;
+
+            var running = true;
+
+            new Thread(() => { Console.ReadKey(); running = false; }).Start();
+
+            var bestAccuracy = .5;
+            List<double> accuracies = [];
+            while (running)
+            {
+                var nets = neuralNetwork.GenRandomBatch(generationSize, randomize * (bestAccuracy + 1));
+
+                bestAccuracy = double.NaN;
+                foreach (var net in nets)
+                {
+                    var newAccuracy = RunCheck(net, inputs, outputs, i);
+                    if (!(newAccuracy >= bestAccuracy))
+                    {
+                        bestAccuracy = newAccuracy;
+                        neuralNetwork = net;
+                    }
+                }
+                accuracies.Add(bestAccuracy);
+                if (accuracies.Count > 48) accuracies.RemoveAt(0);
+                Console.Write($"Iteration: {i} " +
+                    $"| Generation Size: {generationSize} " +
+                    $"| Accuracy: {bestAccuracy.ToString("F", CultureInfo.InvariantCulture)} " +
+                    $"| Averaged Accuracy: {accuracies.Average().ToString("F", CultureInfo.InvariantCulture)}\r");
+                i++;
+            }
+
+            timer.Stop();
+            Console.WriteLine($"\n\nCompleted in {timer.ElapsedMilliseconds}ms");
         }
 
         static InputOverrides overrides;
@@ -208,14 +279,10 @@ namespace AI
                     vision.Add(inReader.ReadDouble());
                 }
 
-                var AIPlayerLocation = playerLocations[0];
-                playerLocations.RemoveAt(0);
-
                 var previousMoveVector = overrides.GetVectorFromMovement();
 
                 var outputs = net.Evaluate(
                     [..vision,
-                    AIPlayerLocation.X, AIPlayerLocation.Y,
                     ..(playerLocations.SelectMany<Vector2, double>(vec=>[vec.X,vec.Y])),
                     numPlayers,
                     overrides.jumpDown?1:0,

@@ -19,13 +19,25 @@ namespace AIBopls
         public static InputOverrides inputOverrides = new InputOverrides();
         public static Communicator communicator;
         public static AIBopls instance;
+        public static FileStream file;
+        public static BinaryWriter fileWriter;
         private void Awake()
         {
             harmony = new Harmony(Info.Metadata.GUID);
             harmony.PatchAll(typeof(AIBopls));
             instance = this;
-            communicator = new Communicator();
+            if (recordMovements)
+            {
+                file = File.Create("recordedInputs.bin");
+                fileWriter = new BinaryWriter(file);
+            }
+            else
+            {
+                communicator = new Communicator();
+            }
         } // MUST USE GREANDE+DASH+GUST
+
+        public static readonly bool recordMovements = false;
 
         [HarmonyPatch(typeof(Player), nameof(Player.ForceSetInputProfile))]
         [HarmonyPrefix]
@@ -44,17 +56,34 @@ namespace AIBopls
         {
             if (IsAIPlayer(__instance))
             {
-                startDown = inputOverrides.startDown;
-                selectDown = inputOverrides.selectDown;
-                jumpDown = inputOverrides.jumpDown;
-                firstDown = inputOverrides.firstDown;
-                secondDown = inputOverrides.secondDown;
-                thirdDown = inputOverrides.thirdDown;
-                joystickAngle = inputOverrides.joystickAngle;
-                w = inputOverrides.w;
-                a = inputOverrides.a;
-                s = inputOverrides.s;
-                d = inputOverrides.d;
+                if (recordMovements)
+                {
+                    inputOverrides.startDown = startDown;
+                    inputOverrides.selectDown = selectDown;
+                    inputOverrides.jumpDown = jumpDown;
+                    inputOverrides.firstDown = firstDown;
+                    inputOverrides.secondDown = secondDown;
+                    inputOverrides.thirdDown = thirdDown;
+                    inputOverrides.joystickAngle = joystickAngle;
+                    inputOverrides.w = w;
+                    inputOverrides.a = a;
+                    inputOverrides.s = s;
+                    inputOverrides.d = d;
+                }
+                else
+                {
+                    startDown = inputOverrides.startDown;
+                    selectDown = inputOverrides.selectDown;
+                    jumpDown = inputOverrides.jumpDown;
+                    firstDown = inputOverrides.firstDown;
+                    secondDown = inputOverrides.secondDown;
+                    thirdDown = inputOverrides.thirdDown;
+                    joystickAngle = inputOverrides.joystickAngle;
+                    w = inputOverrides.w;
+                    a = inputOverrides.a;
+                    s = inputOverrides.s;
+                    d = inputOverrides.d;
+                }
             }
         }
 
@@ -66,12 +95,10 @@ namespace AIBopls
 
         [HarmonyPatch(typeof(Player), nameof(Player.Kill))]
         [HarmonyPrefix]
-        public static void Player_Kill(Player __instance, int idOfKiller, 
-                                       long timestamp, CauseOfDeath causeOfDeath)
+        public static void Player_Kill(Player __instance, int idOfKiller)
         {
             if (!IsAIPlayer(__instance)) return;
 
-            Player killer = PlayerHandler.Get().GetPlayer(idOfKiller);
             HandleGameEnd(__instance, idOfKiller == __instance.Id);
         }
 
@@ -111,7 +138,7 @@ namespace AIBopls
         static DateTime? matchStartTime = null;
         public static void HandleGameEnd(Player player, bool killedSelf)
         {
-            if (sentGameEnd) return;
+            if (sentGameEnd || recordMovements) return;
             sentGameEnd = true;
             communicator.outWriter.Write(false);
             var elapsedTime = DateTime.Now - matchStartTime.Value;
@@ -135,25 +162,57 @@ namespace AIBopls
         public static bool sentGameEnd = false;
         public static void ExternalAI(Player player)
         {
+            if (!player.stillAliveThisRound) return;
+
+            const int rays = 16;
+            var playerHandler = PlayerHandler.Get();
+            var playerList = playerHandler.PlayerList();
+            playerList.Remove(player);
+            playerList.Insert(0, player);
+
+            List<double> vision = new List<double>();
+
+            for (int i = 0; i < rays; i++)
+            {
+                vision.Add(GetDistance(player, 2 * Math.PI * (i / rays)));
+            }
+
+            if (recordMovements)
+            {
+                if (player.WonThisRound) return;
+                fileWriter.Write(playerList.Count);
+                foreach (var p in playerList)
+                {
+                    fileWriter.Write((float)p.Position.x);
+                    fileWriter.Write((float)p.Position.y);
+                }
+                fileWriter.Write(vision.Count);
+                foreach (var dbl in vision)
+                {
+                    fileWriter.Write(dbl);
+                }
+                fileWriter.Write(inputOverrides.jumpDown);
+                fileWriter.Write(inputOverrides.firstDown);
+                fileWriter.Write(inputOverrides.secondDown);
+                fileWriter.Write(inputOverrides.thirdDown);
+                fileWriter.Write((float)inputOverrides.GetJoystickAngleVector().x);
+                fileWriter.Write((float)inputOverrides.GetJoystickAngleVector().y);
+                fileWriter.Write(inputOverrides.w);
+                fileWriter.Write(inputOverrides.a);
+                fileWriter.Write(inputOverrides.s);
+                fileWriter.Write(inputOverrides.d);
+                return;
+            }
+
             if (!matchStartTime.HasValue) matchStartTime = DateTime.Now;
 
             if (player.WonThisRound)
             {
                 HandleGameEnd(player, false);
                 return;
-            } else if (!player.stillAliveThisRound) return;
-            else
-            {
-                sentGameEnd = false;
             }
 
-
-            const int rays = 16;
-
-            var playerHandler = PlayerHandler.Get();
-            var playerList = playerHandler.PlayerList();
-            playerList.Remove(player);
-            playerList.Insert(0, player);
+            sentGameEnd = false;
 
             communicator.outWriter.Write(true);
             communicator.outWriter.Write(playerList.Count);
@@ -161,13 +220,6 @@ namespace AIBopls
             {
                 communicator.outWriter.Write((float)p.Position.x);
                 communicator.outWriter.Write((float)p.Position.y);
-            }
-
-            List<double> vision = new List<double>();
-
-            for (int i = 0; i < rays; i++)
-            {
-                vision.Add(GetDistance(player, 2 * Math.PI * (i / rays)));
             }
 
             communicator.outWriter.Write(vision.Count);
@@ -192,6 +244,24 @@ namespace AIBopls
             public bool a;
             public bool s;
             public bool d;
+
+            static readonly Vec2[] inputVectors = GenerateInputVectorTable();
+            private static Vec2[] GenerateInputVectorTable()
+            {
+                var vectors = new Vec2[256];
+                vectors[0] = Vec2.zero;
+                for (int i = 1; i < vectors.Length; i++)
+                {
+                    int num = i - 1;
+                    Fix x = Fix.PiTimes2 * ((Fix)num / (Fix)255f);
+                    vectors[i] = new Vec2(Fix.Cos(x), Fix.Sin(x));
+                }
+                return vectors;
+            }
+            public Vec2 GetJoystickAngleVector()
+            {
+                return inputVectors[joystickAngle];
+            }
 
             public void SetMovementFromVector(Vector2 vector)
             {

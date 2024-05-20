@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -244,7 +245,9 @@ namespace AI
         public double Evaluate(List<double> input)
         {
             var weightedAverage = input.Select((dbl, i) => dbl * weights[i]).Sum();
-            return ActivationFunc(weightedAverage + bias);
+            var activation = ActivationFunc(weightedAverage + bias);
+            if (double.IsNaN(activation)) return 0;
+            return activation;
         }
         public abstract double ActivationFunc(double x);
 
