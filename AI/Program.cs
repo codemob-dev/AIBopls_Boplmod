@@ -59,11 +59,13 @@ namespace AI
         {
             var random = new Random(iteration);
 
+            var factor = 108d / inputs.Count;
+
             ConcurrentBag<double> errors = [];
             var countdown = new CountdownEvent(inputs.Count);
             for (int i = 0; i < inputs.Count; i++)
             {
-                if (random.NextDouble() > .025 || i == 0)
+                if (random.NextDouble() > factor || i == 0)
                 {
                     countdown.Signal();
                     continue;
@@ -73,12 +75,12 @@ namespace AI
                     double[] input = inputs[(int)i];
                     double[] output = outputs[(int)i];
                     double[] evaluatedOutput = [.. net.Evaluate([.. input])];
-                    var localErrors = new double[output.Length];
+                    var localErrors = 0d;
                     for (int j = 0; j < output.Length; j++)
                     {
-                        localErrors[j] = Math.Abs(output[j] - evaluatedOutput[j]);
+                        localErrors += Math.Abs(output[j] - evaluatedOutput[j]);
                     }
-                    errors.Add(localErrors.Average());
+                    errors.Add(localErrors / output.Length);
                     countdown.Signal();
                 }, i);
             }
@@ -191,13 +193,27 @@ namespace AI
 
 
             var timer = Stopwatch.StartNew();
-            var generationSize = 72;
-            var randomize = .05;
+            var generationSize = 32;
+            var randomize = .03;
             var i = 0;
 
             var running = true;
 
             new Thread(() => { Console.ReadKey(); running = false; }).Start();
+            var autosaveThread = new Thread(() =>
+            {
+                while (running)
+                {
+                    neuralNetwork.Save(NETWORK_FILE);
+                    try {
+                        Thread.Sleep(1500);
+                    } catch (ThreadInterruptedException)
+                    {
+                        break;
+                    }
+                }
+            });
+            autosaveThread.Start();
 
             double bestAccuracy;
             List<double> accuracies = [];
@@ -216,7 +232,7 @@ namespace AI
                     }
                 }
                 accuracies.Add(bestAccuracy);
-                if (accuracies.Count > 24) accuracies.RemoveAt(0);
+                if (accuracies.Count > 42) accuracies.RemoveAt(0);
                 Console.Write($"Iteration: {i} " +
                     $"| Generation Size: {generationSize} " +
                     $"| Accuracy: {bestAccuracy.ToString("F", CultureInfo.InvariantCulture)} " +
@@ -225,6 +241,7 @@ namespace AI
             }
 
             timer.Stop();
+            autosaveThread.Interrupt();
             Console.WriteLine($"\n\nCompleted in {timer.ElapsedMilliseconds}ms");
         }
 
