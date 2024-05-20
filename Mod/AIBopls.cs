@@ -40,7 +40,7 @@ namespace AIBopls
             }
         } // MUST USE GREANDE+DASH+GUST
 
-        public static readonly bool recordMovements = true;
+        public static readonly bool recordMovements = false;
 
         [HarmonyPatch(typeof(Player), nameof(Player.IsLocalPlayer), MethodType.Getter)]
         [HarmonyPostfix]
