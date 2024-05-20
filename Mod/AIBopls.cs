@@ -3,6 +3,7 @@ using BoplFixedMath;
 using HarmonyLib;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
 using System.Reflection;
@@ -25,6 +26,8 @@ namespace AIBopls
         {
             harmony = new Harmony(Info.Metadata.GUID);
             harmony.PatchAll(typeof(AIBopls));
+
+
             instance = this;
             if (recordMovements)
             {
@@ -37,7 +40,28 @@ namespace AIBopls
             }
         } // MUST USE GREANDE+DASH+GUST
 
-        public static readonly bool recordMovements = false;
+        public static readonly bool recordMovements = true;
+
+        [HarmonyPatch(typeof(Player), nameof(Player.IsLocalPlayer), MethodType.Getter)]
+        [HarmonyPostfix]
+        public static void Player_IsLocalPlayer_get(Player __instance, ref bool __result)
+        {
+            var caller = new StackTrace().GetFrame(2);
+            if (caller.GetMethod().Name == "SpawnPlayers" && IsAIPlayer(__instance) && !recordMovements)
+            {
+                __result = false;
+            }
+        }
+
+        [HarmonyPatch(typeof(CharacterSelectBox), nameof(CharacterSelectBox.OnEnterSelect))]
+        [HarmonyPrefix]
+        public static void CharacterSelectBox_OnEnterSelect(CharacterSelectBox __instance)
+        {
+            if (__instance.RectangleIndex == 0 && !recordMovements)
+            {
+                CharacterSelectBox.keyboardMouseIsOccupied = false;
+            }
+        }
 
         [HarmonyPatch(typeof(Player), nameof(Player.ForceSetInputProfile))]
         [HarmonyPrefix]
@@ -102,13 +126,6 @@ namespace AIBopls
             HandleGameEnd(__instance, idOfKiller == __instance.Id);
         }
 
-        [HarmonyPatch(typeof(CharacterSelectBox), nameof(CharacterSelectBox.OnEnterSelect))]
-        [HarmonyPrefix]
-        public static void CharacterSelectBox_OnEnterSelect()
-        {
-            CharacterSelectBox.keyboardMouseIsOccupied = false;
-        }
-
         [HarmonyPatch(typeof(PlayerBody), nameof(PlayerBody.UpdateSim))]
         [HarmonyPrefix]
         public static void PlayerBody_UpdateSim(PlayerBody __instance)
@@ -118,6 +135,20 @@ namespace AIBopls
             if (IsAIPlayer(player))
             {
                 ExternalAI(player);
+                if (!recordMovements)
+                {
+                    player.ForceSetInputProfile(default,
+                                                default,
+                                                default,
+                                                default,
+                                                default,
+                                                default,
+                                                default,
+                                                default,
+                                                default,
+                                                default,
+                                                default);
+                }
             }
         }
 
@@ -126,7 +157,7 @@ namespace AIBopls
             var direction = new Vec2(Fix.Sin((Fix)angle), Fix.Cos((Fix)angle));
 
             var result = DetPhysics.Get().RaycastToClosest(
-                player.Position + direction * player.Scale * (Fix)2,
+                player.Position + (direction * player.Scale * (Fix)2),
                 direction,
                 DetPhysics.Get().maxBeamDistance,
                 DetPhysics.Get().beamHitMask);
@@ -148,7 +179,8 @@ namespace AIBopls
             if (player.WonThisRound)
             {
                 score += 240 - elapsedTime.TotalSeconds;
-            } else
+            }
+            else
             {
                 score += .3 * elapsedTime.TotalSeconds;
             }
@@ -158,6 +190,7 @@ namespace AIBopls
 
             matchStartTime = null;
         }
+
 
         public static bool sentGameEnd = false;
         public static void ExternalAI(Player player)
@@ -177,6 +210,17 @@ namespace AIBopls
                 vision.Add(GetDistance(player, 2 * Math.PI * (i / rays)));
             }
 
+            TimeSpan timeSinceMatchStart;
+            if (!matchStartTime.HasValue)
+            {
+                matchStartTime = DateTime.Now;
+                timeSinceMatchStart = TimeSpan.Zero;
+            }
+            else
+            {
+                timeSinceMatchStart = DateTime.Now - matchStartTime.Value;
+            }
+
             if (recordMovements)
             {
                 if (player.WonThisRound) return;
@@ -191,6 +235,7 @@ namespace AIBopls
                 {
                     fileWriter.Write(dbl);
                 }
+                fileWriter.Write(timeSinceMatchStart.TotalSeconds);
                 fileWriter.Write(inputOverrides.jumpDown);
                 fileWriter.Write(inputOverrides.firstDown);
                 fileWriter.Write(inputOverrides.secondDown);
@@ -204,7 +249,6 @@ namespace AIBopls
                 return;
             }
 
-            if (!matchStartTime.HasValue) matchStartTime = DateTime.Now;
 
             if (player.WonThisRound)
             {
@@ -227,6 +271,7 @@ namespace AIBopls
             {
                 communicator.outWriter.Write(dbl);
             }
+            communicator.outWriter.Write(timeSinceMatchStart.TotalSeconds);
 
             inputOverrides = InputOverrides.Receive(communicator.inReader);
         }
@@ -278,7 +323,7 @@ namespace AIBopls
             }
             public static byte CreateAimVector(Vector2 vector)
             {
-                return (byte)((int)(long)(Vec2.NormalizedVectorAngle((Vec2)vector) / Fix.PiTimes2 * (Fix)255L) % 255 + 1);
+                return (byte)(((int)(long)(Vec2.NormalizedVectorAngle((Vec2)vector) / Fix.PiTimes2 * (Fix)255L) % 255) + 1);
             }
             public static InputOverrides Receive(BinaryReader reader)
             {
