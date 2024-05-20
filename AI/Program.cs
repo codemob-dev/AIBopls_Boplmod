@@ -45,7 +45,7 @@ namespace AI
 
                 while (pipe.IsConnected)
                 {
-                    var batch = neuralNetwork.GenRandomBatch(5, 16);
+                    var batch = neuralNetwork.GenRandomBatch(5, .08);
                     neuralNetwork = RunBatch(batch, inReader, outWriter);
                 }
             }
@@ -191,19 +191,19 @@ namespace AI
 
 
             var timer = Stopwatch.StartNew();
-            var generationSize = 24;
-            var randomize = 16;
+            var generationSize = 32;
+            var randomize = .03;
             var i = 0;
 
             var running = true;
 
             new Thread(() => { Console.ReadKey(); running = false; }).Start();
 
-            var bestAccuracy = .5;
+            double bestAccuracy;
             List<double> accuracies = [];
             while (running)
             {
-                var nets = neuralNetwork.GenRandomBatch(generationSize, randomize * (bestAccuracy + 1));
+                var nets = neuralNetwork.GenRandomBatch(generationSize, randomize);
 
                 bestAccuracy = double.NaN;
                 foreach (var net in nets)
@@ -216,7 +216,7 @@ namespace AI
                     }
                 }
                 accuracies.Add(bestAccuracy);
-                if (accuracies.Count > 48) accuracies.RemoveAt(0);
+                if (accuracies.Count > 24) accuracies.RemoveAt(0);
                 Console.Write($"Iteration: {i} " +
                     $"| Generation Size: {generationSize} " +
                     $"| Accuracy: {bestAccuracy.ToString("F", CultureInfo.InvariantCulture)} " +

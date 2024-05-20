@@ -237,16 +237,15 @@ namespace AI
         {
             var clone = Clone();
             clone.weights = clone.weights
-                .Select(d => d + 2 * factor * Random.Shared.NextDouble() - factor)
+                .Select(d => Math.Clamp(d + factor * Random.Shared.NextDouble() - factor * .5, -2, 2))
                 .ToList();
-            clone.bias = 2 * factor * Random.Shared.NextDouble() - factor;
+            clone.bias = Math.Clamp(clone.bias + factor * Random.Shared.NextDouble() - factor * .5, -2, 2);
             return clone;
         }
         public double Evaluate(List<double> input)
         {
             var weightedAverage = input.Select((dbl, i) => dbl * weights[i]).Sum();
             var activation = ActivationFunc(weightedAverage + bias);
-            if (double.IsNaN(activation)) return 0;
             return activation;
         }
         public abstract double ActivationFunc(double x);
