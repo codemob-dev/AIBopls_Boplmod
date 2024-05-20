@@ -59,7 +59,7 @@ namespace AI
         {
             var random = new Random(iteration);
 
-            var factor = 108d / inputs.Count;
+            var factor = 320d / inputs.Count;
 
             ConcurrentBag<double> errors = [];
             var countdown = new CountdownEvent(inputs.Count);
@@ -193,7 +193,7 @@ namespace AI
 
 
             var timer = Stopwatch.StartNew();
-            var generationSize = 32;
+            var generationSize = 26;
             var randomize = .03;
             var i = 0;
 
