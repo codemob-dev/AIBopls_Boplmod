@@ -219,10 +219,10 @@ namespace AI
 
 
             var timer = Stopwatch.StartNew();
-            var generationSize = 64;
+            var generationSize = 128;
             var randomize = .01;
             var i = 0;
-            var fractionOfData = 384;
+            var fractionOfData = 512;
 
             var running = true;
 
