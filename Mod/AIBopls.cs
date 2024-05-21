@@ -31,7 +31,7 @@ namespace AIBopls
             instance = this;
             if (recordMovements)
             {
-                file = File.Create("recordedInputs.bin");
+                file = File.OpenWrite("recordedInputs.bin");
                 fileWriter = new BinaryWriter(file);
             }
             else
@@ -80,7 +80,7 @@ namespace AIBopls
         {
             if (IsAIPlayer(__instance))
             {
-                if (recordMovements)
+                if (recordMovements || GameLobby.isPlayingAReplay)
                 {
                     inputOverrides.startDown = startDown;
                     inputOverrides.selectDown = selectDown;
