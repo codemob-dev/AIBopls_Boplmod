@@ -33,6 +33,7 @@ namespace AI
         }
 
         const string NETWORK_FILE = "ai";
+        const string RECORDED_INPUTS_FILE = "recorded_inputs";
         static void ModConnection(string pipeName)
         {
             using var pipe = new NamedPipeClientStream(pipeName);
@@ -112,24 +113,24 @@ namespace AI
                     + 1 // Number of players
                     + outputTypes.Count // Previous inputs
                     ));
-                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 48,
+                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 64,
                     neuralNetwork.PreviousLayerSize));
-                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 48,
+                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 64,
                     neuralNetwork.PreviousLayerSize));
-                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 48,
+                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 64,
                     neuralNetwork.PreviousLayerSize));
-                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 48,
+                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 64,
                     neuralNetwork.PreviousLayerSize));
-                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 48,
+                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 64,
                     neuralNetwork.PreviousLayerSize));
-                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 48,
+                neuralNetwork.AddLayer(new HiddenLayer(typeof(TanhNode), 64,
                     neuralNetwork.PreviousLayerSize));
                 neuralNetwork.AddLayer(new OutputLayer(
                     outputTypes,
                     neuralNetwork.PreviousLayerSize));
             }
             if (!train) return;
-            using var file = File.OpenRead("recordedInputs.bin");
+            using var file = File.OpenRead(Path.ChangeExtension(RECORDED_INPUTS_FILE, ".bpltrain"));
             var fileReader = new BinaryReader(file);
 
             List<double[]> inputs = [];

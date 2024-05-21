@@ -6,9 +6,11 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
+using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 
 namespace AIBopls
@@ -22,32 +24,116 @@ namespace AIBopls
         public static AIBopls instance;
         public static FileStream file;
         public static BinaryWriter fileWriter;
+
+        const string REPLAYS_FOLDER = "replays_to_load";
+        const string RECORDED_INPUTS_FILE = "recorded_inputs";
+
+        const bool RECORD_INPUTS = true;
+
         private void Awake()
         {
             harmony = new Harmony(Info.Metadata.GUID);
             harmony.PatchAll(typeof(AIBopls));
 
-
             instance = this;
-            if (recordMovements)
+            if (RECORD_INPUTS)
             {
-                file = File.OpenWrite("recordedInputs.bin");
+                file = File.OpenWrite(Path.ChangeExtension(RECORDED_INPUTS_FILE, ".bpltrain"));
                 fileWriter = new BinaryWriter(file);
             }
             else
             {
                 communicator = new Communicator();
             }
-        } // MUST USE GREANDE+DASH+GUST
 
-        public static readonly bool recordMovements = false;
+            LoadAvailableReplays();
+        } // MUST USE GREANDE+DASH+GUST
+        
+
+        public static void LoadAvailableReplays()
+        {
+            if (RECORD_INPUTS)
+            {
+                if (!Directory.Exists(REPLAYS_FOLDER))
+                {
+                    Directory.CreateDirectory(REPLAYS_FOLDER);
+                }
+                else
+                {
+                    var replays = Directory.EnumerateFiles(REPLAYS_FOLDER);
+                    if (replays.Any())
+                    {
+                        var file = replays.First();
+                        var host = FindObjectOfType<Host>();
+                        Host.recordReplay = false;
+
+                        var host_replay = typeof(Host).GetField(
+                            "replay",
+                            BindingFlags.NonPublic | BindingFlags.Instance);
+
+                        var host_clients = typeof(Host).GetField(
+                            "clients",
+                            BindingFlags.NonPublic | BindingFlags.Instance);
+
+                        host_replay.SetValue(
+                            host,
+                            NetworkTools.ReadCompressedReplay(
+                                File.ReadAllBytes(file),
+                                out StartRequestPacket startRequestPacket));
+
+                        Host.replayPath = file;
+
+                        SteamManager.startParameters = startRequestPacket;
+                        GameLobby.isPlayingAReplay = true;
+                        var clients = new List<Client>();
+                        for (int j = 0; j < startRequestPacket.nrOfPlayers - 1; j++)
+                        {
+                            clients.Add(new Client(1, new SteamConnection()));
+                        }
+                        host_clients.SetValue(host, clients);
+
+                        SceneManager.LoadScene("Replay");
+                    }
+                    else
+                    {
+                        SceneManager.LoadScene("MainMenu");
+                    }
+                }
+            }
+        }
+
+        static bool gameStarted = false;
+
+        [HarmonyPatch(typeof(GameSessionHandler), nameof(GameSessionHandler.UpdateSim))]
+        [HarmonyPostfix]
+        private static void ReplayUnloader()
+        {
+            if (GameLobby.isPlayingAReplay)
+            {
+                if (GameSessionHandler.HasGameEnded())
+                {
+                    if (gameStarted)
+                    {
+                        var replays = Directory.EnumerateFiles(REPLAYS_FOLDER);
+                        if (replays.Any()) File.Delete(replays.First());
+
+                        gameStarted = false;
+                        LoadAvailableReplays();
+                    }
+                }
+                else if (!gameStarted)
+                {
+                    gameStarted = true;
+                }
+            }
+        }
 
         [HarmonyPatch(typeof(Player), nameof(Player.IsLocalPlayer), MethodType.Getter)]
         [HarmonyPostfix]
         public static void Player_IsLocalPlayer_get(Player __instance, ref bool __result)
         {
             var caller = new StackTrace().GetFrame(2);
-            if (caller.GetMethod().Name == "SpawnPlayers" && IsAIPlayer(__instance) && !recordMovements)
+            if (caller.GetMethod().Name == "SpawnPlayers" && IsAIPlayer(__instance) && !RECORD_INPUTS)
             {
                 __result = false;
             }
@@ -57,7 +143,7 @@ namespace AIBopls
         [HarmonyPrefix]
         public static void CharacterSelectBox_OnEnterSelect(CharacterSelectBox __instance)
         {
-            if (__instance.RectangleIndex == 0 && !recordMovements)
+            if (__instance.RectangleIndex == 0 && !RECORD_INPUTS)
             {
                 CharacterSelectBox.keyboardMouseIsOccupied = false;
             }
@@ -80,7 +166,7 @@ namespace AIBopls
         {
             if (IsAIPlayer(__instance))
             {
-                if (recordMovements || GameLobby.isPlayingAReplay)
+                if (RECORD_INPUTS || GameLobby.isPlayingAReplay)
                 {
                     inputOverrides.startDown = startDown;
                     inputOverrides.selectDown = selectDown;
@@ -135,7 +221,7 @@ namespace AIBopls
             if (IsAIPlayer(player))
             {
                 ExternalAI(player);
-                if (!recordMovements)
+                if (!RECORD_INPUTS)
                 {
                     player.ForceSetInputProfile(default,
                                                 default,
@@ -169,7 +255,7 @@ namespace AIBopls
         static DateTime? matchStartTime = null;
         public static void HandleGameEnd(Player player, bool killedSelf)
         {
-            if (sentGameEnd || recordMovements) return;
+            if (sentGameEnd || RECORD_INPUTS) return;
             sentGameEnd = true;
             communicator.outWriter.Write(false);
             var elapsedTime = DateTime.Now - matchStartTime.Value;
@@ -221,7 +307,7 @@ namespace AIBopls
                 timeSinceMatchStart = DateTime.Now - matchStartTime.Value;
             }
 
-            if (recordMovements)
+            if (RECORD_INPUTS)
             {
                 if (player.WonThisRound) return;
                 fileWriter.Write(playerList.Count);
