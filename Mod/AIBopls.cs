@@ -110,12 +110,20 @@ namespace AIBopls
         {
             if (GameLobby.isPlayingAReplay)
             {
-                if (GameSessionHandler.HasGameEnded())
+                var host = FindObjectOfType<Host>();
+
+                var host_replay = typeof(Host).GetField(
+                    "replay",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                var replay = host_replay.GetValue(host) as Queue<InputPacketQuad>;
+
+                if (GameSessionHandler.HasGameEnded() || replay.Count == 0)
                 {
                     if (gameStarted)
                     {
                         var replays = Directory.EnumerateFiles(REPLAYS_FOLDER);
-                        if (replays.Any()) File.Delete(replays.First());
+
+                        File.Delete(replays.First());
 
                         gameStarted = false;
                         LoadAvailableReplays();
@@ -133,7 +141,7 @@ namespace AIBopls
         public static void Player_IsLocalPlayer_get(Player __instance, ref bool __result)
         {
             var caller = new StackTrace().GetFrame(2);
-            if (caller.GetMethod().Name == "SpawnPlayers" && IsAIPlayer(__instance) && !RECORD_INPUTS)
+            if (caller.GetMethod().Name == "SpawnPlayers" && IsAIPlayer(__instance) && !RECORD_INPUTS && !GameLobby.isPlayingAReplay)
             {
                 __result = false;
             }
@@ -199,8 +207,8 @@ namespace AIBopls
 
         public static bool IsAIPlayer(Player player)
         {
-            return ((GameLobby.isOnlineGame && player.IsLocalPlayer)
-                || (!GameLobby.isOnlineGame && player.Id == 1)) && !GameLobby.isPlayingAReplay;
+            return (GameLobby.isOnlineGame && player.IsLocalPlayer)
+                || (!GameLobby.isOnlineGame && player.Id == 1);
         }
 
         [HarmonyPatch(typeof(Player), nameof(Player.Kill))]
@@ -221,7 +229,7 @@ namespace AIBopls
             if (IsAIPlayer(player))
             {
                 ExternalAI(player);
-                if (!RECORD_INPUTS)
+                if (!RECORD_INPUTS && !GameLobby.isPlayingAReplay)
                 {
                     player.ForceSetInputProfile(default,
                                                 default,
@@ -307,6 +315,7 @@ namespace AIBopls
                 timeSinceMatchStart = DateTime.Now - matchStartTime.Value;
             }
 
+
             if (RECORD_INPUTS)
             {
                 if (player.WonThisRound) return;
@@ -335,6 +344,7 @@ namespace AIBopls
                 return;
             }
 
+            if (GameLobby.isPlayingAReplay) return;
 
             if (player.WonThisRound)
             {

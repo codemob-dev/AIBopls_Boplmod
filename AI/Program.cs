@@ -56,38 +56,95 @@ namespace AI
             }
         }
 
-        static double RunCheck(Network net, List<double[]> inputs, List<double[]> outputs, int iteration, int fractionOfData)
+        static double RunCheck(
+            Network net, 
+            List<double[]> inputs, List<double[]> outputs, 
+            int iteration, 
+            int fractionOfData=-1, 
+            int maxThreads=-1)
         {
             var random = new Random(iteration);
 
             var factor = (double)fractionOfData / inputs.Count;
 
+
             ConcurrentBag<double> errors = [];
             var countdown = new CountdownEvent(inputs.Count);
+            var availableThreads = new CountdownEvent(inputs.Count);
+            var resetEvent = new ManualResetEvent(true);
+
+            maxThreads = (maxThreads == -1)?inputs.Count:maxThreads;
+
+            long numActiveThreads = 0;
+            void calcThread(object i)
+            {
+                Interlocked.Increment(ref numActiveThreads);
+                if (Interlocked.Read(ref numActiveThreads) >= maxThreads) resetEvent.Reset();
+
+                double[] input = inputs[(int)i];
+                double[] output = outputs[(int)i];
+                double[] evaluatedOutput = [.. net.Evaluate([.. input])];
+                var localErrors = 0d;
+                for (int j = 0; j < output.Length; j++)
+                {
+                    localErrors += Math.Abs(output[j] - evaluatedOutput[j]);
+                }
+                errors.Add(localErrors / output.Length);
+
+                Interlocked.Decrement(ref numActiveThreads);
+                if (Interlocked.Read(ref numActiveThreads) < maxThreads) resetEvent.Set();
+                countdown.Signal();
+            }
             for (int i = 0; i < inputs.Count; i++)
             {
-                if (random.NextDouble() > factor || i == 0)
+                if (factor > 0 && random.NextDouble() > factor)
                 {
                     countdown.Signal();
                     continue;
                 }
-                ThreadPool.QueueUserWorkItem(i =>
-                {
-                    double[] input = inputs[(int)i];
-                    double[] output = outputs[(int)i];
-                    double[] evaluatedOutput = [.. net.Evaluate([.. input])];
-                    var localErrors = 0d;
-                    for (int j = 0; j < output.Length; j++)
-                    {
-                        localErrors += Math.Abs(output[j] - evaluatedOutput[j]);
-                    }
-                    errors.Add(localErrors / output.Length);
-                    countdown.Signal();
-                }, i);
+                resetEvent.WaitOne();
+                new Thread(calcThread).Start(i);
             }
             countdown.Wait();
             double accuracy = errors.Average();
             return accuracy;
+        }
+
+        static string Prompt(string prompt)
+        {
+            Console.Write(prompt);
+            return Console.ReadLine().Trim();
+        }
+
+        static double PromptDouble(string prompt, double? defaultValue = null)
+        {
+            while (true)
+            {
+                if (double.TryParse(Prompt(prompt), out var value))
+                {
+                    return value;
+                }
+                else
+                {
+                    if (defaultValue.HasValue) return defaultValue.Value;
+                    else Console.WriteLine($"Invalid value!");
+                }
+            }
+        }
+        static int PromptInt(string prompt, int? defaultValue=null)
+        {
+            while (true)
+            {
+                if (int.TryParse(Prompt(prompt), out var value))
+                {
+                    return value;
+                }
+                else
+                {
+                    if (defaultValue.HasValue) return defaultValue.Value;
+                    else Console.WriteLine($"Invalid value!");
+                }
+            }
         }
 
         const int rays = 16;
@@ -218,12 +275,18 @@ namespace AI
 
             Console.WriteLine($"Loaded {inputs.Count} frames of data");
 
+            var numLogicalProcessors = Environment.ProcessorCount;
 
-            var timer = Stopwatch.StartNew();
-            var generationSize = 128;
-            var randomize = .01;
-            var i = 0;
-            var fractionOfData = 512;
+            Console.WriteLine($"Detected {numLogicalProcessors} logical processors");
+
+            // -------------CONFIGURATIONS-------------
+
+            var generationSize = PromptInt("Generation Size, defaults to 128: ", 128);
+            var randomize = PromptDouble("Generation variability, defaults to 0.01: ", 0.01);
+            int fractionOfData = PromptInt("Per-generation data fraction, -1 to use all data (default): ", -1);
+            int maxThreads = PromptInt($"Max threads, -1 to disable limit, defaults to the number of detected logical processors ({numLogicalProcessors}): ", numLogicalProcessors);
+            
+            // -----------END CONFIGURATIONS-----------
 
             var running = true;
 
@@ -243,8 +306,12 @@ namespace AI
             });
             autosaveThread.Start();
 
+            var timer = Stopwatch.StartNew();
+
             double bestAccuracy;
             List<double> accuracies = [];
+
+            var i = 0;
             while (running)
             {
                 var nets = neuralNetwork.GenRandomBatch(generationSize, randomize);
@@ -252,7 +319,7 @@ namespace AI
                 bestAccuracy = double.NaN;
                 foreach (var net in nets)
                 {
-                    var newAccuracy = RunCheck(net, inputs, outputs, i, fractionOfData);
+                    var newAccuracy = RunCheck(net, inputs, outputs, i, fractionOfData, maxThreads);
                     if (!(newAccuracy >= bestAccuracy))
                     {
                         bestAccuracy = newAccuracy;
@@ -264,8 +331,8 @@ namespace AI
                 var avgAccuracy = accuracies.Average();
                 Console.Write($"Iteration: {i} " +
                     $"| Generation Size: {generationSize} " +
-                    $"| Accuracy: {avgAccuracy.ToString("F", CultureInfo.InvariantCulture)} " +
-                    $"({(100 - avgAccuracy * 50).ToString("F", CultureInfo.InvariantCulture)}%)\r");
+                    $"| Deviation: {avgAccuracy.ToString("F", CultureInfo.InvariantCulture)} " +
+                    $"({(100 - avgAccuracy * 50).ToString("F", CultureInfo.InvariantCulture)}% accuracy)\r");
                 i++;
             }
 
