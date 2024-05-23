@@ -50,14 +50,17 @@ namespace AIBopls
                     .GetMethod("Update", BindingFlags.NonPublic | BindingFlags.Instance);
                 var patch = GetType().GetMethod(nameof(CharacterSelectHandler_online_Update));
                 harmony.Patch(func, postfix: new HarmonyMethod(patch));
+
+                func = typeof(MainMenu)
+                    .GetMethod("Update", BindingFlags.NonPublic | BindingFlags.Instance);
+                patch = GetType().GetMethod(nameof(MainMenu_Update));
+                harmony.Patch(func, postfix: new HarmonyMethod(patch));
             }
 
             LoadAvailableReplays();
         }
 
-        [HarmonyPatch(typeof(GameSessionHandler), nameof(GameSessionHandler.LeaveGame))]
-        [HarmonyPostfix]
-        public static void GameSessionHandler_Leave()
+        public static void MainMenu_Update()
         {
             var playButtons = FindObjectsOfType<PlayButton>();
             foreach (var playButton in playButtons)
