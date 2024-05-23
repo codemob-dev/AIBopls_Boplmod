@@ -88,7 +88,7 @@ namespace AIBopls
                 {
                     firstConnection = null;
                 }
-                if (DateTime.Now - firstConnection.Value > TimeSpan.FromSeconds(5) 
+                if (DateTime.Now - firstConnection.Value > TimeSpan.FromSeconds(10) 
                     && SteamManager.LocalPlayerIsLobbyOwner)
                 {
                     if (SteamManager.currentlyLookingForPlayers)
