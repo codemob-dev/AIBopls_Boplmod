@@ -28,7 +28,7 @@ namespace AIBopls
         const string REPLAYS_FOLDER = "replays_to_load";
         const string RECORDED_INPUTS_FILE = "recorded_inputs";
 
-        const bool RECORD_INPUTS = true;
+        const bool RECORD_INPUTS = false;
 
         private void Awake()
         {
@@ -44,11 +44,121 @@ namespace AIBopls
             else
             {
                 communicator = new Communicator();
+                SceneManager.sceneLoaded += SceneManager_sceneLoaded;
+
+                var func = typeof(CharacterSelectHandler_online)
+                    .GetMethod("Update", BindingFlags.NonPublic | BindingFlags.Instance);
+                var patch = GetType().GetMethod(nameof(CharacterSelectHandler_online_Update));
+                harmony.Patch(func, postfix: new HarmonyMethod(patch));
             }
 
             LoadAvailableReplays();
-        } // MUST USE GREANDE+DASH+GUST
+        }
+
+        [HarmonyPatch(typeof(GameSessionHandler), nameof(GameSessionHandler.LeaveGame))]
+        [HarmonyPostfix]
+        public static void GameSessionHandler_Leave()
+        {
+            var playButtons = FindObjectsOfType<PlayButton>();
+            foreach (var playButton in playButtons)
+            {
+                if (playButton.startOnlineInstead)
+                {
+                    playButton.Click();
+                }
+            }
+        }
+
+        static DateTime? firstConnection = null;
         
+        public static void CharacterSelectHandler_online_Update(
+            CharacterSelectHandler_online __instance)
+        {
+            if (!firstConnection.HasValue)
+            {
+                if (__instance.networkPlayerBoxes.Length > 0 
+                    && __instance.networkPlayerBoxes[0].connectedPlayer.Connected)
+                {
+                    firstConnection = DateTime.Now;
+                }
+            } else
+            {
+                if (__instance.networkPlayerBoxes.Length == 0
+                    || !__instance.networkPlayerBoxes[0].connectedPlayer.Connected)
+                {
+                    firstConnection = null;
+                }
+                if (DateTime.Now - firstConnection.Value > TimeSpan.FromSeconds(5) 
+                    && SteamManager.LocalPlayerIsLobbyOwner)
+                {
+                    if (SteamManager.currentlyLookingForPlayers)
+                    {
+                        __instance.ClickFindButton();
+                    }
+                    
+                    if (CharacterSelectHandler_online.startButtonAvailable)
+                    {
+                        __instance.ClickStartButton();
+                    }
+                }
+
+                if (__instance.characterSelectBox.menuState == CharSelectMenu.select)
+                {
+                    __instance.characterSelectBox.OnEnterReady();
+                }
+            }
+        }
+
+        private void SceneManager_sceneLoaded(Scene scene, LoadSceneMode _)
+        {
+            Logger.LogInfo($"Loaded scene '{scene.name}'!");
+            switch (scene.name)
+            {
+                case "CharacterSelect":
+                    {
+                        var characterSelectHandler = FindObjectOfType<CharacterSelectHandler>();
+                        var firstSlot = characterSelectHandler.characterSelectBoxes[0];
+                        switch (firstSlot.menuState)
+                        {
+                            case CharSelectMenu.join:
+                                firstSlot.joinColor.GetComponent<CharSelectClickToJoin>().OnPointerClick(null);
+                                firstSlot.selectables[2].Select(3);
+                                firstSlot.OnEnterReady();
+                                break;
+                            case CharSelectMenu.select:
+                                firstSlot.OnEnterReady();
+                                break;
+                        }
+
+                        break;
+                    }
+
+                case "ChSelect_online":
+                    {
+                        firstConnection = null;
+                        var characterSelectHandler = FindObjectOfType<CharacterSelectHandler_online>();
+                        var firstSlot = characterSelectHandler.characterSelectBox;
+                        switch (firstSlot.menuState)
+                        {
+                            case CharSelectMenu.join:
+                                firstSlot.joinColor.GetComponent<CharSelectClickToJoin>().OnPointerClick(null);
+                                firstSlot.selectables[2].Move(false);
+                                firstSlot.OnEnterReady();
+                                break;
+                            case CharSelectMenu.select:
+                                firstSlot.OnEnterReady();
+                                break;
+                        }
+
+                        if (!SteamManager.currentlyLookingForPlayers)
+                        {
+                            characterSelectHandler.ClickFindButton();
+                        }
+
+                        break;
+                    }
+            }
+        }
 
         public static void LoadAvailableReplays()
         {
