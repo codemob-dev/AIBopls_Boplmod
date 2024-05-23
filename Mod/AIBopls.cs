@@ -67,6 +67,7 @@ namespace AIBopls
             {
                 if (playButton.startOnlineInstead)
                 {
+                    playButton.InputActive = true;
                     playButton.Click();
                 }
             }
